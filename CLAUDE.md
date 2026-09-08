@@ -142,6 +142,11 @@ on `drive.mjs` reproduces a patched run without a browser.
 
 ## Conventions
 
+**`NEXT.md` beside this file is this repository's handoff** — decisions, open
+questions and what was learned, read in full by a session working here and
+edited only by one. It never carries a tip or a count; the workspace's
+`tools/status.sh` derives those.
+
 **Commit messages are prose**, not conventional-commits: a sentence
 describing the change from the user's side.
 
