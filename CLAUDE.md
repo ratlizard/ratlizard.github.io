@@ -39,6 +39,33 @@ not delta-compress, and a copy per deploy would grow the repository without
 bound. The `gh-pages` branch from before 8 September 2026 is left as a
 rollback path and is no longer written to.
 
+**GitHub Pages sends no response headers, and that is the one thing this host
+cannot do.** It has not cost anything yet — the module is single-threaded —
+but it is the decision to know about before the URL is treated as settled,
+because the URL is the expensive part to redo:
+
+- If threads are ever wanted, `SharedArrayBuffer` needs cross-origin
+  isolation, which needs `COOP: same-origin` and `COEP: require-corp`.
+- **Moving host is not the answer, and this has already been settled once
+  here.** `coi-serviceworker.js` re-serves a page's own navigation with those
+  two headers, which is how an origin that cannot set a header gets one; the
+  retired `mobile/` attempt in `ratlizard/alchemy` did exactly this and
+  `alchemy/mobile/MOBILE.md` has the measurement — **56,233 instructions/ms
+  with the buffer against 1,896 without**, about thirty times, in the
+  infinite-mac embed it was built around.
+- `require-corp` and **not** `credentialless`: Safari does not implement the
+  latter, and Safari is the browser this page exists for.
+- The archive.org fetch survives `require-corp`. COEP blocks cross-origin
+  *no-cors* subresources that carry no `Cross-Origin-Resource-Policy`; a
+  CORS-mode `fetch()` that passes its CORS check is not blocked, and
+  archive.org's `/cors/` path is exactly that. (This was stated the other way
+  round in conversation on 8 September 2026 and is wrong that way.)
+
+The hosting question was asked and answered the same day: **stay on GitHub
+Pages.** Netlify's analytics is paid, Cloudflare's free tier is a beacon
+script that could be added here without moving, and neither buys a header
+that `coi-serviceworker` does not already give.
+
 ## The two paths that must agree
 
 `.github/workflows/pages.yml` checks this repository out at `path: site`,
