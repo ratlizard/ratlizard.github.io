@@ -32,7 +32,10 @@ The Node runners in `www/` drive the same module without a browser:
 | `patch_smoke.mjs` | the Magpie patch route: the vendored format files, the module's exports, and the real patch through its wrappers |
 
 Each takes the game archive as its first argument; `game.sit` beside the page
-(gitignored) is the usual symlink. The game is not in this repository.
+(gitignored) is the usual symlink — `ln -s
+../../cythera-reference/game/installed-folders/"Cythera Installed Folder.sit"
+www/game.sit`. It does not survive a move of this tree, and without it
+`menus_smoke` and `saves_smoke` fail on ENOENT rather than skipping. The game is not in this repository.
 
 The game's windows carry their own ornate frames (drawn by its window
 definition procedure, which the fork calls on reveal and after a move) and

@@ -28,8 +28,15 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The add-ons are in the cythera-reference checkout beside this repository.
+// Both depths are tried because this tree has moved once already (it was
+// alchemy/web/ until 8 September 2026), and a wrong depth here makes the
+// real-file half skip rather than fail -- silence that reads as a pass.
+const addonDefault = ['../../cythera-reference/community/addons',
+                      '../../../cythera-reference/community/addons']
+  .map(c => join(here, c)).find(existsSync) || join(here, '../../cythera-reference/community/addons');
 const [dataPath = join(process.env.TMPDIR || '/tmp', 'Cythera Data.data'),
-       addonDir = join(here, '../../../cythera-reference/community/addons')] = process.argv.slice(2);
+       addonDir = addonDefault] = process.argv.slice(2);
 
 let failures = 0;
 const fail = (what, why) => { failures++; console.error(`FAIL ${what}: ${why}`); };

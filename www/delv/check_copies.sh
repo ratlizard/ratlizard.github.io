@@ -12,9 +12,17 @@
 # COPIES.txt still records which version was taken.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-src="$here/../../../../grimoire/js"
+# Grimoire is a sibling of this repository's root, and this script sits two
+# directories down from it. Both depths are tried because this tree has moved
+# once already (it was alchemy/web/ until 8 September 2026) and a wrong depth
+# makes the check skip rather than fail, which is the one outcome worth
+# designing against here: silence that reads as a pass.
+src=""
+for cand in "$here/../../../grimoire/js" "$here/../../../../grimoire/js"; do
+  [ -d "$cand" ] && { src="$cand"; break; }
+done
 
-if [ ! -d "$src" ]; then
+if [ -z "$src" ]; then
   echo "skip: grimoire is not checked out beside this repository"
   exit 0
 fi
