@@ -1,0 +1,50 @@
+# Build the browser module from the wolflizard fork and publish www/ to the
+# gh-pages branch, which GitHub Pages serves (Settings > Pages > Deploy from
+# a branch > gh-pages, root). This is the organisation site repository, so it
+# serves at the bare https://ratlizard.github.io/. The game is not in this
+# repository and is not fetched here: the page fetches it from archive.org
+# when it opens.
+#
+# The checkout path below and cythera-web/Cargo.toml's relative path to the
+# fork have to agree. Both assume one directory level, so `path: site` here
+# and `../../wolflizard` there resolve to the same place; change one and you
+# must change the other.
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: site
+      - uses: actions/checkout@v4
+        with:
+          repository: ratlizard/wolflizard
+          ref: cythera-detailed
+          path: wolflizard
+      - run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: site/cythera-web
+      - run: cargo build --release --target wasm32-unknown-unknown --manifest-path site/cythera-web/Cargo.toml
+      - run: cp site/cythera-web/target/wasm32-unknown-unknown/release/cythera_web.wasm site/www/
+      - name: publish www to gh-pages
+        working-directory: site/www
+        run: |
+          touch .nojekyll
+          sed -i "s/__BUILD__/${GITHUB_SHA:0:8}/" index.html
+          git init -q -b gh-pages
+          git -c user.name=e-z-g -c user.email=e-z-g@users.noreply.github.com add -A
+          git -c user.name=e-z-g -c user.email=e-z-g@users.noreply.github.com commit -q -m "site from ${GITHUB_SHA}"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

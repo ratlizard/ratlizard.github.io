@@ -1,10 +1,20 @@
-# web/ — Cythera in the browser, on the systemless fork
+# ratlizard.github.io — Cythera in the browser
 
-`cythera-web/` is a C-ABI WebAssembly binding over `../../../wolflizard`
-(the fork, checked out beside this repository); `www/index.html` is the page
-that runs it. `build.sh` builds the module locally and its comments record
-the two toolchain facts that cost a build each. The Pages workflow builds
-from the fork's `cythera-detailed` branch and publishes `www/` to `gh-pages`.
+The organisation site: this repository serves at the bare
+**https://ratlizard.github.io/**. It was `web/` in `ratlizard/alchemy` until
+8 September 2026 and was split out with `git subtree split`, so the history
+below that date is alchemy's.
+
+`cythera-web/` is a C-ABI WebAssembly binding over `../../wolflizard` (the
+fork, checked out beside this repository); `www/index.html` is the page that
+runs it. `build.sh` builds the module locally and its comments record the two
+toolchain facts that cost a build each. The Pages workflow builds from the
+fork's `cythera-detailed` branch and publishes `www/` to `gh-pages`.
+
+**The two relative paths have to agree**: the workflow checks this repository
+out at `path: site` and `cythera-web/Cargo.toml` reaches the fork with
+`../../wolflizard`. Both assume one directory level. Change one and you must
+change the other, or the build resolves to nothing.
 
 The Node runners in `www/` drive the same module without a browser:
 
