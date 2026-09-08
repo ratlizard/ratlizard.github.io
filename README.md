@@ -9,7 +9,8 @@ below that date is alchemy's.
 fork, checked out beside this repository); `www/index.html` is the page that
 runs it. `build.sh` builds the module locally and its comments record the two
 toolchain facts that cost a build each. The Pages workflow builds from the
-fork's `cythera-detailed` branch and publishes `www/` to `gh-pages`.
+fork's `cythera-detailed` branch and deploys `www/` to Pages through the
+Actions source, so the built module never enters git.
 
 **The two relative paths have to agree**: the workflow checks this repository
 out at `path: site` and `cythera-web/Cargo.toml` reaches the fork with

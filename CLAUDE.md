@@ -30,6 +30,15 @@ never assumed. **You are in `ratlizard.github.io`.**
 | `ratlizard/grimoire` | the public site of browser tools that read Cythera's files |
 | `ratlizard/cythera-workbench` | private. The Python tools and the notes |
 
+## How it deploys
+
+Pages is served from the **GitHub Actions source**, not a branch: the
+workflow builds the module, uploads `www/` as an artifact and deploys it.
+The 11 MB wasm is therefore never committed — it is a build product, it does
+not delta-compress, and a copy per deploy would grow the repository without
+bound. The `gh-pages` branch from before 8 September 2026 is left as a
+rollback path and is no longer written to.
+
 ## The two paths that must agree
 
 `.github/workflows/pages.yml` checks this repository out at `path: site`,

@@ -1,9 +1,16 @@
-# Build the browser module from the wolflizard fork and publish www/ to the
-# gh-pages branch, which GitHub Pages serves (Settings > Pages > Deploy from
-# a branch > gh-pages, root). This is the organisation site repository, so it
-# serves at the bare https://ratlizard.github.io/. The game is not in this
-# repository and is not fetched here: the page fetches it from archive.org
-# when it opens.
+# Build the browser module from the wolflizard fork and deploy www/ straight
+# to GitHub Pages through the Actions source (Settings > Pages > Source >
+# GitHub Actions). This is the organisation site repository, so it serves at
+# the bare https://ratlizard.github.io/.
+#
+# It published to a gh-pages branch until 8 September 2026. The artifact
+# route replaced it so that the 11 MB wasm module never has to live in git:
+# it is a build product, it does not delta-compress, and a branch copy of it
+# per deploy would grow the repository without bound. That branch is left in
+# place as a rollback path and is no longer written.
+#
+# The game is not in this repository and is not fetched here: the page
+# fetches it from archive.org when it opens.
 #
 # The checkout path below and cythera-web/Cargo.toml's relative path to the
 # fork have to agree. Both assume one directory level, so `path: site` here
@@ -15,12 +22,16 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+# Never cancel a deploy that is already running: a half-published site is
+# worse than a late one.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,14 +48,23 @@ jobs:
           workspaces: site/cythera-web
       - run: cargo build --release --target wasm32-unknown-unknown --manifest-path site/cythera-web/Cargo.toml
       - run: cp site/cythera-web/target/wasm32-unknown-unknown/release/cythera_web.wasm site/www/
-      - name: publish www to gh-pages
+      # The page refuses a module it was not built with: index.html carries
+      # __BUILD__ and appends it to the module URL as a cache key. Without
+      # this substitution a phone can hold an old module against a new page,
+      # which showed up once as "cw_menus is not a function" ten minutes
+      # after a deploy.
+      - name: stamp the build
         working-directory: site/www
-        run: |
-          touch .nojekyll
-          sed -i "s/__BUILD__/${GITHUB_SHA:0:8}/" index.html
-          git init -q -b gh-pages
-          git -c user.name=e-z-g -c user.email=e-z-g@users.noreply.github.com add -A
-          git -c user.name=e-z-g -c user.email=e-z-g@users.noreply.github.com commit -q -m "site from ${GITHUB_SHA}"
-          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sed -i "s/__BUILD__/${GITHUB_SHA:0:8}/" index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/www
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
