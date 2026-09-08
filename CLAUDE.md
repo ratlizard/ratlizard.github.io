@@ -142,11 +142,6 @@ on `drive.mjs` reproduces a patched run without a browser.
 
 ## Conventions
 
-**Nobody is named.** The maintainer is "the maintainer" in every file and
-every commit. Never write a name, an email address or a home-directory path
-into any file or commit. Commit as `e-z-g <e-z-g@users.noreply.github.com>`,
-with no Claude attribution trailers.
-
 **Commit messages are prose**, not conventional-commits: a sentence
 describing the change from the user's side.
 
