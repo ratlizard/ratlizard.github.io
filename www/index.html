@@ -85,7 +85,7 @@
   <div id="menus"></div>
 </div>
 <div id="cheatpanel" hidden>
-  <div class="row"><b>Cheats</b> <span class="dim">the game's own cheat mode, read out of its executable (workbench, cythera_keys.md)</span> <button id="cheatclose">Close</button></div>
+  <div class="row"><b>Cheats</b> <span class="dim">the game's own cheat mode, read out of its executable</span> <button id="cheatclose">Close</button></div>
   <div class="row" id="cheatstatus"></div>
   <div class="row"><button id="cheatenable">Enable cheat mode in the preferences and reload</button> <span class="dim">sets bit 0 of the fourth byte of UI Prefs, which nothing in the game sets; the game reads it at launch</span></div>
   <div class="row"><button id="cheatcode">Type the code (©gra)</button> <span class="dim">in the map window, with a game open; the log says "Cheat mode activated."</span></div>
@@ -447,8 +447,8 @@ async function prefsRecord() {
 // (resources 0x9000..0x900A), with the checksum each one's stream hashes to.
 // The fork keys substitutes by that checksum and knows nothing about Cythera;
 // this table is the Cythera-specific half, and it lives here for that reason.
-// Recomputed with cythera-workbench tools/tune_library.py if a different
-// build of the game ever turns up.
+// Recomputed with the tune-library script in the disassembly toolkit if a
+// different build of the game ever turns up.
 const GAME_TUNES = [
   { sum: 0xFB7C80EC, name: 'Cythera Theme' },
   { sum: 0x240F243E, name: 'Land King Hall' },
