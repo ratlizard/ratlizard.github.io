@@ -6,6 +6,57 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## What the maintainer's log said, 9 September 2026
+
+He pasted the Log from his phone, which settled more than the three items did.
+The line that matters:
+
+```
+audio: context running at 48000 Hz, 138532 samples pushed, 1685 loud checks,
+media session playing, one node, 1734 samples ahead, 125378 run dry
+```
+
+**That figure was unreadable and is now fixed rather than acted on.** 125,378
+starved output frames is 2.6 seconds at 48 kHz, and the node is made in the tap
+that starts the game, so it runs through the whole boot and the unpaced
+fast-forward with an empty ring. Nearly all of that count is the silence before
+play, not gaps in the music -- and the same line says the ring was 1,734
+samples ahead at the time, which is a healthy ring. The worklet now counts a
+gap only once it has been given something to play, and the report says how many
+there were **since the last report** as well as in all. The next log settles
+whether the ring runs dry during play at all.
+
+**One real bug came out of looking, though.** The frame loop asked the guest
+for `AUDIO_TARGET` minus what the ring held, and what the ring held came from a
+message the worklet posts every eight callbacks. That message waits behind
+whatever the main thread is doing, which in the middle of the emulator is tens
+of milliseconds, so the ring looked fuller than it was exactly when the page
+was busiest, and the loop asked for less sound exactly when it should have
+asked for more. The last reported position is carried forward at the rate the
+node reads instead, which needs no message to arrive on time. The cushion went
+from 100 ms to 180 ms at the same time.
+
+### The freeze is not in either branch that logs
+
+His log has one black screen, 0.7 s at boot, and one catch-up of a single
+frame. **Neither of the two paths that would explain a long freeze fired.** So
+the page now says when a frame itself took more than 250 ms, splitting the time
+into the guest and the drawing, on all three paths. His next log names it.
+
+What it is not: `cw_save_scan`, the two-second save scan that runs on the main
+thread. Measured over twelve calls against a restored save store, median 0.8 ms
+and worst 1.0 ms, so it is not the stall even though the stall he described sat
+next to a `saves: stored` line.
+
+### The soundtracks cannot be fetched, and now there are links
+
+Confirmed on the device: cytheraguides.com does not allow another site to read
+its files, so **Fetch cannot work there and no change here can make it**. That
+was carried as untested since 6 September; it is answered. The Music panel now
+has a **Download** link beside the chooser that opens the selected set in a new
+tab, and the note under it says plainly that the route is download, save,
+choose. Fetch stays for a site that does allow it.
+
 ## After the crackle: static, the pause between screens, the load, 9 September 2026
 
 The maintainer, on the same day: "Crackle gone but there's still underlying

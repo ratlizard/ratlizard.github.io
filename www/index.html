@@ -80,6 +80,9 @@
   #savespanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #savespanel .row { margin: 6px 0; }
   #musicpanel, #patchpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
+  #musicpanel .linkbtn { font: inherit; color: #ddd; background: #232323; border: 1px solid #3a3a3a; border-radius: 7px; padding: 5px 11px; text-decoration: none; display: inline-block; line-height: 1.3; }
+  #musicpanel .linkbtn:hover { background: #2d2d2d; border-color: #4c4c4c; }
+  #musicpanel .linkbtn[aria-disabled="true"] { opacity: .38; pointer-events: none; }
   #musicpanel .row, #patchpanel .row { margin: 6px 0; } #musicpanel td, #musicpanel th, #patchpanel td, #patchpanel th { text-align: left; padding: 2px 10px 2px 0; } #musicsource { max-width: 70%; background: #111; color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 6px; } #musicurl { width: 58%; background: #111; color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 6px; }
   #savestable { width: 100%; border-collapse: collapse; font-size: 12px; }
   #savestable td, #savestable th { padding: 4px 6px; border-top: 1px solid #333; text-align: left; }
@@ -142,9 +145,9 @@
   <div class="row"><b>Music</b> <span id="musicnote" class="dim"></span> <button id="musicclose">Close</button></div>
   <div class="row dim">Give it a zip, or files. Anything named <code>1A2B3C4D.mid</code> for the tune it replaces is taken at its word; anything else is put in track order and the first eleven become the game's eleven tunes. MIDI plays on the built-in instruments; recordings in any format this browser can decode are played as they are. The game still chooses which tune plays, when it starts and how loud it is. A tune already playing changes when it next starts.</div>
   <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav" multiple hidden></label></div>
-  <div class="row"><select id="musicsource"></select> <button id="musicfetch">Fetch</button></div>
+  <div class="row"><select id="musicsource"></select> <a id="musicdownload" class="linkbtn" target="_blank" rel="noopener">Download</a> <button id="musicfetch">Fetch</button></div>
   <div class="row"><input id="musicurl" type="url" placeholder="https://… any other zip"> <button id="musicload">Fetch</button></div>
-  <div class="row dim">Fetching needs the site to allow cross-origin reads. If it will not, download the zip in another tab and choose it above; that always works.</div>
+  <div class="row dim">cytheraguides.com does not allow another site to read its files, so Fetch fails there and there is nothing this page can do about it. <b>Download</b> opens the chosen set in a new tab; save it, then use <b>Choose a zip</b> above. Fetch is kept for a site that does allow it.</div>
   <div class="row"><button id="musicclear">Remove all, and play the game's own music</button></div>
   <div class="row"><table id="musictable"></table></div>
 </div>
@@ -861,9 +864,16 @@ async function fetchMusic(url) {
 }
 document.getElementById('musicload').onclick = () => fetchMusic(document.getElementById('musicurl').value.trim());
 {
-  const sel = document.getElementById('musicsource');
+  const sel = document.getElementById('musicsource'), dl = document.getElementById('musicdownload');
   sel.innerHTML = '<option value="">Choose a published set…</option>' +
     MUSIC_SOURCES.map(s => `<option value="${s.url}">${s.label}</option>`).join('');
+  // Fetching these is refused by the site that publishes them, so the link is
+  // the route that works: download it, then choose the file.
+  const syncLink = () => {
+    dl.href = sel.value || '#';
+    dl.setAttribute('aria-disabled', sel.value ? 'false' : 'true');
+  };
+  sel.addEventListener('change', syncLink); syncLink();
   document.getElementById('musicfetch').onclick = () => {
     if (sel.value) { document.getElementById('musicurl').value = sel.value; fetchMusic(sel.value); }
   };
@@ -1102,7 +1112,13 @@ class GuestAudio extends AudioWorkletProcessor {
         // off when samples arrive.
         this.vel *= 0.8;
         this.last = Math.max(-1, Math.min(1, (this.last + this.vel) * 0.999));
-        out[i] = this.last; this.starved++; this.wasDry = true;
+        // Only count a gap once there has been something to play: this node is
+        // made in the tap that starts the game and runs through the whole boot
+        // with an empty ring, and counting that silence made the figure in the
+        // log unreadable -- 125,378 of them in the first five seconds, nearly
+        // all of them before play began.
+        out[i] = this.last; this.wasDry = true;
+        if (this.written > 0) this.starved++;
         continue;
       }
       const k = Math.floor(this.read), f = this.read - k;
@@ -1138,8 +1154,23 @@ registerProcessor('guest-audio', GuestAudio);
 // for whatever brings the ring back up to this, so the audio device's clock
 // sets the pace rather than the wall clock, which is what the game's own
 // sound channels expect.
-const AUDIO_TARGET = Math.round(RATE * 0.10), AUDIO_CAPACITY = Math.round(RATE * 0.5);
+const AUDIO_TARGET = Math.round(RATE * 0.18), AUDIO_CAPACITY = Math.round(RATE * 0.5);
 let audioNode = null, audioMode = 'pending', audioQueued = 0, audioConsumed = 0, audioStarved = 0;
+let audioConsumedAt = 0, audioStarvedSeen = 0;
+// How much sound the ring still holds. The worklet says where it has read to
+// every eight callbacks, and that message waits behind whatever the main
+// thread is doing -- which, in the middle of the emulator, is tens of
+// milliseconds. Taking the message at face value made the ring look fuller
+// than it was exactly when the page was busiest, so the frame loop asked for
+// less sound exactly when it should have asked for more. The last position is
+// carried forward at the rate the node reads instead, which needs no message
+// to be on time. While the ring is empty the node reads nothing, so this
+// over-counts what has gone, which errs towards making more sound.
+function ringAhead() {
+  if (!audioNode) return 0;
+  const since = Math.max(0, audioCtx.currentTime - audioConsumedAt);
+  return audioQueued - (audioConsumed + since * RATE);
+}
 // A quarter second of 8 kHz silence. iOS routes a page that uses only Web
 // Audio through an audio session the Ring/Silent switch mutes, and nothing
 // in the Web Audio API can change that -- which is how this page could push
@@ -1186,7 +1217,9 @@ function startWorklet() {
       numberOfInputs: 0, outputChannelCount: [1],
       processorOptions: { rate: RATE, capacity: AUDIO_CAPACITY },
     });
-    node.port.onmessage = e => { audioConsumed = e.data.consumed; audioStarved = e.data.starved; };
+    node.port.onmessage = e => {
+      audioConsumed = e.data.consumed; audioConsumedAt = audioCtx.currentTime; audioStarved = e.data.starved;
+    };
     node.connect(audioCtx.destination);
     audioNode = node; audioMode = 'worklet';
     say(`audio: one node at ${audioCtx.sampleRate} Hz, ${(AUDIO_TARGET / RATE * 1000).toFixed(0)} ms kept ahead`);
@@ -1198,7 +1231,7 @@ function startWorklet() {
 // what is queued belongs to a moment that will not be played.
 function resetAudio() {
   wasm.cw_audio_drain(); nextAudioTime = 0;
-  if (audioNode) { audioNode.port.postMessage('reset'); audioQueued = 0; audioConsumed = 0; }
+  if (audioNode) { audioNode.port.postMessage('reset'); audioQueued = 0; audioConsumed = 0; audioConsumedAt = audioCtx.currentTime; }
 }
 // The frames the page spends off the wall clock -- a black screen while a room
 // or a save loads, and the catch-up that follows -- used to throw their sound
@@ -1216,7 +1249,10 @@ function carryAudio() {
 function audioReport() {
   if (!audioCtx) return;
   const media = silentMedia ? (silentMedia.paused ? 'paused' : 'playing') : 'none';
-  const path = audioNode ? `one node, ${Math.round(audioQueued - audioConsumed)} samples ahead, ${audioStarved} run dry` : `buffer a frame (${audioMode})`;
+  const since = audioStarved - audioStarvedSeen; audioStarvedSeen = audioStarved;
+  const path = audioNode
+    ? `one node, ${Math.round(ringAhead())} samples ahead, ran dry ${since} times since the last of these (${audioStarved} in all)`
+    : `buffer a frame (${audioMode})`;
   say(`audio: context ${audioCtx.state} at ${audioCtx.sampleRate} Hz, ${audioPushed} samples pushed, ${audioLoud} loud checks, media session ${media}, ${path}`);
   if (booted) say('sound path: ' + dec.decode(new Uint8Array(mem.buffer, wasm.cw_audio_debug(), wasm.cw_audio_debug_len())));
   // The runner hands the page samples only while a sound channel is open;
@@ -1306,6 +1342,17 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
   let startTick = wasm.cw_tick(), t0 = performance.now();
   let audioRemainder = 0, lastT = t0, insWindow = 0, winT = t0, reports = 0, catchingUp = 0;
   let blackSince = 0, blackAt = 0;
+  // The maintainer's long freeze on opening a file did not show up in either
+  // of the two branches that log -- his log has one 0.7 s black screen at boot
+  // and one catch-up of a single frame, and nothing else -- so the page has to
+  // say when a frame itself took far longer than a frame. The parts are
+  // separated because they fail differently: a slice of the guest that will
+  // not be interrupted, and drawing.
+  function noteSlowFrame(now, where, guestMs, drawMs, steps) {
+    const total = performance.now() - now;
+    if (total < 250) return;
+    say(`play: a ${total.toFixed(0)} ms frame in ${where} at tick ${wasm.cw_tick()} — ${guestMs.toFixed(0)} ms guest (${steps} instructions), ${drawMs.toFixed(0)} ms drawing`);
+  }
   // Cycles per tick follow what this device delivers: the runner's default
   // is the 25 MHz profile, and a phone that manages 21 M instructions a
   // second would otherwise fall further behind the clock every second.
@@ -1340,14 +1387,17 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     if (blackSince && now - blackSince < 8000) {
       if (!blackAt) blackAt = now;
       let s = 0;
+      const g0 = performance.now();
       while (performance.now() - now < 42) {
         const r = wasm.cw_run_catchup(SLICE, wasm.cw_tick() + 120);
         if (!r || !wasm.cw_running()) break;
         s += r;
       }
+      const gMs = performance.now() - g0;
       insWindow += s;
       startTick = wasm.cw_tick(); t0 = performance.now(); lastT = t0;
-      present();
+      const d0 = performance.now(); present(); const dMs = performance.now() - d0;
+      noteSlowFrame(now, 'a black screen', gMs, dMs, s);
       if (screenLit > 0.02) {
         say(`play: the screen was black for ${((performance.now() - blackAt) / 1000).toFixed(1)} s; ran unpaced until the game drew again`);
         blackSince = 0; blackAt = 0;
@@ -1370,14 +1420,17 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     // few tens of milliseconds whatever the guest is doing.
     if (wasm.cw_tick() < deadline - 20) {
       let s = 0;
+      const g0 = performance.now();
       while (performance.now() - now < 42 && s < 60_000_000) {
         const r = wasm.cw_run_catchup(SLICE, wasm.cw_tick() + 120);
         if (!r || !wasm.cw_running()) break;
         s += r;
       }
+      const gMs = performance.now() - g0;
       insWindow += s; catchingUp++;
       startTick = wasm.cw_tick(); t0 = performance.now(); lastT = t0;
-      if (catchingUp % 3 === 1) present();
+      const d0 = performance.now(); if (catchingUp % 3 === 1) present(); const dMs = performance.now() - d0;
+      noteSlowFrame(now, 'catching up', gMs, dMs, s);
       if (now - winT > 1000) { statEl.textContent = `${W}x${H}, ${(insWindow / ((now - winT) / 1000) / 1e6).toFixed(1)} M/s, catching up`; insWindow = 0; winT = now; }
       // The sound made while behind is the music the game is playing; carry it.
       carryAudio();
@@ -1392,7 +1445,7 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     // The old path has no ring, so it still goes by the wall clock.
     let samples;
     if (audioNode) {
-      samples = Math.max(0, Math.min(Math.round(RATE * 0.1), Math.round(AUDIO_TARGET - (audioQueued - audioConsumed))));
+      samples = Math.max(0, Math.min(Math.round(RATE * 0.1), Math.round(AUDIO_TARGET - ringAhead())));
     } else {
       const want = Math.max(0, dt / 1000 * RATE + audioRemainder); samples = Math.floor(want); audioRemainder = want - samples;
     }
@@ -1400,10 +1453,12 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     // Spend most of the frame on the guest when it is behind; rendering at
     // 30 fps beats a guest at 70% duty.
     const budget = wasm.cw_tick() < deadline - 2 ? 26 : 13;
+    const guestFrom = performance.now();
     while (wasm.cw_tick() < deadline && steps < MAX_STEPS && performance.now() - now < budget) {
       steps += wasm.cw_run(Math.min(SLICE, MAX_STEPS - steps), deadline, 0);
       if (!wasm.cw_running()) { say('guest halted'); mode = null; break; }
     }
+    const guestMs = performance.now() - guestFrom;
     // Mix this frame's audio whether or not the CPU ran: a guest already at
     // the deadline returns before mixing, which on a phone that keeps up
     // with the clock was every frame, and the page heard nothing.
@@ -1421,7 +1476,9 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
       insWindow = 0; winT = now;
       if (++reports === 5 || reports === 30) audioReport();
     }
-    pushAudio(); present();
+    pushAudio();
+    const drawFrom = performance.now(); present(); const drawMs = performance.now() - drawFrom;
+    noteSlowFrame(now, 'play', guestMs, drawMs, steps);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
