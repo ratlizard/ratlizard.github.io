@@ -1041,6 +1041,88 @@ const VBL_HZ = 60.15, RATE = 22050, MAX_STEPS = 2_000_000;
 // returned almost immediately whatever it was asked for.
 const SLICE = 150_000;
 let audioCtx = null, nextAudioTime = 0, silentMedia = null;
+// The guest's sound is 8-bit at 22,050 Hz, and it used to reach the speaker as
+// one AudioBuffer per animation frame, each declared at the guest's rate and
+// scheduled after the last. That is what made it crackle: splicing
+// AudioBufferSourceNodes end to end puts a full-scale step at every join,
+// sixty a second. Measured in Chrome against a 440 Hz sine, offline, second
+// differences at the joins against the middle of the chunks:
+//
+//   one buffer a frame, as this did          joins 26x the middle, step 0.51
+//   the same, resampled here to the context  joins 26x the middle, step 0.50
+//   the same, every chunk on an exact frame  joins 26x the middle, step 0.50
+//   one worklet node reading a ring          joins  1x the middle, step 0.003
+//   one buffer, one node (the control)       joins  1x the middle, step 0.003
+//
+// So it is the splicing, not the sample rate and not the arithmetic: nothing
+// that schedules a node per frame can be made smooth. The samples themselves
+// were never the problem -- 20 seconds of the theme out of the module hold no
+// clipping and 23 adjacent steps over 16 in 441,600 samples.
+//
+// One node runs for the life of the page instead. The page posts each frame's
+// samples to it and it reads them at the context's rate with the fractional
+// position kept across callbacks, on the audio thread, where the emulator's
+// long main-thread slices cannot starve it. `?audio=legacy` puts the old path
+// back for comparison, and it is also the fallback where AudioWorklet is
+// missing.
+const AUDIO_WORKLET_SOURCE = `
+class GuestAudio extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    this.step = o.processorOptions.rate / sampleRate;
+    this.buf = new Float32Array(o.processorOptions.capacity);
+    this.read = 0; this.written = 0; this.last = 0; this.vel = 0; this.starved = 0; this.n = 0;
+    this.wasDry = false; this.hold = 0; this.mix = 1;
+    this.port.onmessage = e => {
+      if (e.data === 'reset') { this.read = 0; this.written = 0; this.last = 0; this.vel = 0; this.wasDry = true; return; }
+      const s = e.data, cap = this.buf.length;
+      for (let i = 0; i < s.length; i++) this.buf[(this.written + i) % cap] = s[i];
+      this.written += s.length;
+      // Never write over what has not been read: drop the oldest instead.
+      if (this.written - this.read > cap) this.read = this.written - cap;
+    };
+  }
+  process(_, outputs) {
+    const out = outputs[0][0], cap = this.buf.length;
+    for (let i = 0; i < out.length; i++) {
+      if (this.read + 1 >= this.written) {
+        // Nothing left. Carry the wave on at the speed it was going, and take
+        // that speed away over about five samples before letting the level
+        // itself fade: dropping to zero is a click and holding the last value
+        // is a corner, and this is neither. The speed has to go quickly --
+        // a wave carried on in a straight line for long would swing past full
+        // scale -- and the level is clamped in case it tries. The read
+        // position stays where it is, so the stream picks up where it left
+        // off when samples arrive.
+        this.vel *= 0.8;
+        this.last = Math.max(-1, Math.min(1, (this.last + this.vel) * 0.999));
+        out[i] = this.last; this.starved++; this.wasDry = true;
+        continue;
+      }
+      const k = Math.floor(this.read), f = this.read - k;
+      const v = this.buf[k % cap] * (1 - f) + this.buf[(k + 1) % cap] * f;
+      // Coming back after a gap, the wave resumes wherever it left off in the
+      // source while the output had faded away, and stepping straight to it
+      // is the click the fade was there to avoid. Cross-fade from where the
+      // fade got to instead, over about four milliseconds.
+      if (this.wasDry) { this.hold = this.last; this.mix = 0; this.wasDry = false; }
+      let outv = v;
+      if (this.mix < 1) { this.mix = Math.min(1, this.mix + 0.004); outv = this.hold * (1 - this.mix) + v * this.mix; }
+      this.vel = outv - this.last; out[i] = this.last = outv;
+      this.read += this.step;
+    }
+    if ((this.n = (this.n + 1) % 8) === 0) this.port.postMessage({ consumed: this.read, starved: this.starved });
+    return true;
+  }
+}
+registerProcessor('guest-audio', GuestAudio);
+`;
+// How much sound is kept ahead of the speaker. The frame loop asks the guest
+// for whatever brings the ring back up to this, so the audio device's clock
+// sets the pace rather than the wall clock, which is what the game's own
+// sound channels expect.
+const AUDIO_TARGET = Math.round(RATE * 0.10), AUDIO_CAPACITY = Math.round(RATE * 0.5);
+let audioNode = null, audioMode = 'pending', audioQueued = 0, audioConsumed = 0, audioStarved = 0;
 // A quarter second of 8 kHz silence. iOS routes a page that uses only Web
 // Audio through an audio session the Ring/Silent switch mutes, and nothing
 // in the Web Audio API can change that -- which is how this page could push
@@ -1067,14 +1149,45 @@ function unlockAudio() {
     try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { say('no audio: ' + e.message); return; }
     const silent = audioCtx.createBuffer(1, 1, RATE), src = audioCtx.createBufferSource();
     src.buffer = silent; src.connect(audioCtx.destination); src.start();
+    startWorklet();
   }
   if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && audioCtx) audioCtx.resume().catch(() => {}); });
+// Made in the tap with the context, because a page that waits until the first
+// frame to ask for a worklet has left the gesture iOS grants audio in.
+function startWorklet() {
+  if (new URLSearchParams(location.search).get('audio') === 'legacy') {
+    audioMode = 'legacy'; say('audio: the old buffer-a-frame path, by ?audio=legacy'); return;
+  }
+  if (!audioCtx.audioWorklet) { audioMode = 'legacy'; say('audio: no AudioWorklet here; the old buffer-a-frame path'); return; }
+  let url;
+  try { url = URL.createObjectURL(new Blob([AUDIO_WORKLET_SOURCE], { type: 'text/javascript' })); }
+  catch (e) { audioMode = 'legacy'; say('audio: ' + e.message + '; the old buffer-a-frame path'); return; }
+  audioCtx.audioWorklet.addModule(url).then(() => {
+    const node = new AudioWorkletNode(audioCtx, 'guest-audio', {
+      numberOfInputs: 0, outputChannelCount: [1],
+      processorOptions: { rate: RATE, capacity: AUDIO_CAPACITY },
+    });
+    node.port.onmessage = e => { audioConsumed = e.data.consumed; audioStarved = e.data.starved; };
+    node.connect(audioCtx.destination);
+    audioNode = node; audioMode = 'worklet';
+    say(`audio: one node at ${audioCtx.sampleRate} Hz, ${(AUDIO_TARGET / RATE * 1000).toFixed(0)} ms kept ahead`);
+  }).catch(e => {
+    audioMode = 'legacy'; say('audio: the worklet would not load (' + (e.message || e) + '); the old buffer-a-frame path');
+  }).finally(() => URL.revokeObjectURL(url));
+}
+// Everything the ring holds is dropped: the guest is about to jump forward and
+// what is queued belongs to a moment that will not be played.
+function resetAudio() {
+  wasm.cw_audio_drain(); nextAudioTime = 0;
+  if (audioNode) { audioNode.port.postMessage('reset'); audioQueued = 0; audioConsumed = 0; }
+}
 function audioReport() {
   if (!audioCtx) return;
   const media = silentMedia ? (silentMedia.paused ? 'paused' : 'playing') : 'none';
-  say(`audio: context ${audioCtx.state} at ${audioCtx.sampleRate} Hz, ${audioPushed} samples pushed, ${audioLoud} loud checks, media session ${media}`);
+  const path = audioNode ? `one node, ${Math.round(audioQueued - audioConsumed)} samples ahead, ${audioStarved} run dry` : `buffer a frame (${audioMode})`;
+  say(`audio: context ${audioCtx.state} at ${audioCtx.sampleRate} Hz, ${audioPushed} samples pushed, ${audioLoud} loud checks, media session ${media}, ${path}`);
   if (booted) say('sound path: ' + dec.decode(new Uint8Array(mem.buffer, wasm.cw_audio_debug(), wasm.cw_audio_debug_len())));
   // The runner hands the page samples only while a sound channel is open;
   // silence between sounds is not mixed. Zero pushed after seconds of play
@@ -1091,6 +1204,16 @@ function pushAudio() {
   const ptr = wasm.cw_audio_drain(), n = wasm.cw_audio_len(); if (!n || !audioCtx) return;
   const src = new Uint8Array(mem.buffer, ptr, n);
   audioPushed += n; for (let i = 0; i < n; i += 64) if (Math.abs(src[i] - 128) > 4) audioLoud++;
+  // Still waiting for the worklet: drop these rather than start the old path
+  // for a frame or two and hand the speaker two streams at once.
+  if (audioMode === 'pending') return;
+  if (audioNode) {
+    const f = new Float32Array(n);
+    for (let i = 0; i < n; i++) f[i] = (src[i] - 128) / 128;
+    audioNode.port.postMessage(f, [f.buffer]);
+    audioQueued += n;
+    return;
+  }
   const buf = audioCtx.createBuffer(1, n, RATE), ch = buf.getChannelData(0);
   for (let i = 0; i < n; i++) ch[i] = (src[i] - 128) / 128;
   const node = audioCtx.createBufferSource(); node.buffer = buf; node.connect(audioCtx.destination);
@@ -1196,7 +1319,7 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
         blackSince = 0; blackAt = 0;
       }
       if (now - winT > 1000) { statEl.textContent = `${W}x${H}, ${(insWindow / ((now - winT) / 1000) / 1e6).toFixed(1)} M/s, drawing nothing`; insWindow = 0; winT = now; }
-      wasm.cw_audio_drain(); nextAudioTime = 0;
+      resetAudio();
       requestAnimationFrame(frame);
       return;
     }
@@ -1223,13 +1346,22 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
       if (catchingUp % 3 === 1) present();
       if (now - winT > 1000) { statEl.textContent = `${W}x${H}, ${(insWindow / ((now - winT) / 1000) / 1e6).toFixed(1)} M/s, catching up`; insWindow = 0; winT = now; }
       // Whatever was mixed while behind belongs to time already gone.
-      wasm.cw_audio_drain(); nextAudioTime = 0;
+      resetAudio();
       requestAnimationFrame(frame);
       return;
     }
     if (catchingUp) { say(`play: caught up after ${catchingUp} frames`); catchingUp = 0; }
     const dt = Math.min(now - lastT, 100); lastT = now;
-    const want = Math.max(0, dt / 1000 * RATE + audioRemainder), samples = Math.floor(want); audioRemainder = want - samples;
+    // On the worklet path the speaker sets the pace: ask for whatever brings
+    // the ring back to AUDIO_TARGET, capped at a tenth of a second so one
+    // long frame cannot make the guest synthesise a second of music at once.
+    // The old path has no ring, so it still goes by the wall clock.
+    let samples;
+    if (audioNode) {
+      samples = Math.max(0, Math.min(Math.round(RATE * 0.1), Math.round(AUDIO_TARGET - (audioQueued - audioConsumed))));
+    } else {
+      const want = Math.max(0, dt / 1000 * RATE + audioRemainder); samples = Math.floor(want); audioRemainder = want - samples;
+    }
     let steps = 0;
     // Spend most of the frame on the guest when it is behind; rendering at
     // 30 fps beats a guest at 70% duty.

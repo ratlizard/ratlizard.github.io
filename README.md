@@ -29,6 +29,7 @@ The Node runners in `www/` drive the same module without a browser:
 | `realtime_frame.mjs` | a frame after N seconds on the wall-clock path |
 | `drive.mjs` | a scripted run: import a save store, wait, click, key, menu, frame. `CW_PATCH=<patch file>` merges a Magpie patch in before the game starts |
 | `page_smoke.mjs` | the page's script runs top to bottom under a stub document |
+| `audio_ring_check.mjs` | the audio ring out of the page: a stream fed in pieces comes out with no step, running dry bends rather than clicks, a flooded ring stays bounded. Takes no arguments |
 | `patch_smoke.mjs` | the Magpie patch route: the vendored format files, the module's exports, and the real patch through its wrappers |
 
 Each takes the game archive as its first argument; `game.sit` beside the page

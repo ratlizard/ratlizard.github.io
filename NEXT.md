@@ -6,6 +6,64 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## The crackle was the page splicing audio buffers, 9 September 2026
+
+The maintainer: "The music is kind of crackly on ratlizard, has been for a
+while." It was not the fork's mixing and not the 8-bit source. Twenty seconds
+of the theme rendered by `render_wav.mjs` hold no clipping — the signal sits
+inside 51..220 of 0..255, with no rail-to-rail step anywhere and 23 adjacent
+steps over 16 in 441,600 samples.
+
+It was the page. Every animation frame it made an `AudioBuffer` of that
+frame's samples, declared at the guest's 22,050 Hz, and scheduled a fresh
+`AudioBufferSourceNode` after the last one. **Splicing source nodes end to
+end puts a full-scale step at every join**, sixty a second. Measured in
+Chrome offline against a 440 Hz sine at amplitude 0.5, comparing second
+differences at the joins with those mid-chunk:
+
+| how the samples reach the speaker | at the joins | the step there |
+|---|---|---|
+| one buffer a frame at 22,050, as it was | 26x the middle | 0.51 |
+| the same, resampled in the page to the context's rate | 26x | 0.50 |
+| the same, every chunk starting on an exact output frame | 26x | 0.50 |
+| one AudioWorklet node reading a ring | 1.0x | 0.003 |
+| one buffer, one node, no joins at all (the control) | 1.0x | 0.003 |
+
+The same at 44,100, which is an exact double of the guest's rate, so it is
+not resampling and not the arithmetic of the start times: **nothing that
+schedules a node per frame can be made smooth.** The two middle rows are the
+fixes that suggest themselves and neither moves the number, which is worth
+knowing before anyone tries them again.
+
+So one node now runs for the life of the page. The page posts each frame's
+samples to it; it reads them at the context's rate with the fractional
+position kept across callbacks, on the audio thread, where the emulator's
+long main-thread slices cannot starve it. Running dry carries the wave on at
+the speed it was going, takes that speed away over about five samples and
+then fades, so a gap bends rather than clicks. **`?audio=legacy` puts the old
+path back**, which is also the fallback where `AudioWorklet` is missing.
+
+**The frame loop now asks the guest for sound by the ring's level rather than
+by the wall clock** — whatever brings it back to 100 ms ahead, capped at a
+tenth of a second a frame. The audio device's clock is the right master for
+the Sound Manager's channels, and it removes the drift between the two clocks.
+
+`www/audio_ring_check.mjs` lifts the processor out of `index.html` and runs
+it under Node: a stream fed in pieces comes out with no step anywhere,
+running dry bends rather than clicks and picks up again, a ring flooded past
+its capacity stays inside full scale, reset empties it. **The measure is the
+largest second difference anywhere**, which does not depend on guessing where
+the joins fell — an earlier version looked at predicted positions, passed a
+deliberately broken processor, and was thrown away. Reading between samples
+in a straight line costs 3.6e-3 by itself, which is the floor; the negative
+control, skipping three samples at every feed, reads 1.9e-1 and fails.
+
+**For the maintainer**: is the crackle gone, and does the music now sound
+late against what is on screen? A hundred milliseconds is kept ahead of the
+speaker, which is the cost of never running dry, and it can come down if
+sound effects feel behind the game. `?audio=legacy` on the URL is the old
+sound if you want to hear them side by side.
+
 ## The page ran off the bottom of the phone, 9 September 2026
 
 The maintainer, on Chrome on an iPhone 15: "the ratlizard window extends too
