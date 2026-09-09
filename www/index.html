@@ -3,8 +3,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Cythera, systemless, in the browser</title>
 <style>
-  html, body { margin: 0; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; height: 100%; }
-  #bar { padding: 6px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  /* The page is exactly as tall as the phone shows and never scrolls: the bar
+     takes what it needs, the game takes the rest, and nothing can end up
+     below the fold. `dvh` rather than `vh` because on iOS `100vh` is the
+     viewport with the browser's toolbars retracted -- taller than what is on
+     the screen while they are up -- which put the bottom of the game, the
+     character row among it, under the toolbar and out of reach. Keeping the
+     page unscrollable also keeps the toolbars up, so `dvh` stays put. */
+  html, body { margin: 0; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; height: 100%; overscroll-behavior: none; }
+  body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  #bar { padding: 6px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 0 0 auto; }
   /* The bar's controls were browser-default buttons on a dark ground, which
      read as an unfinished page rather than a quiet one. These are the same
      controls, given the page's own colours. */
@@ -21,12 +29,23 @@
   #bar button#play.restart { background: #232323; border-color: #3a3a3a; color: #ddd; font-weight: inherit; }
   #bar button#play.confirm { background: #5a2f2f; border-color: #7a4141; color: #f7e9e9; }
   #stat { color: #9a9a9a; }
-  @media (max-width: 700px) { #bar { gap: 6px; padding: 6px 8px; } #bar button, #bar .linkbtn { padding: 5px 9px; } }
-  #stage { display: flex; justify-content: center; align-items: center; }
-  canvas { image-rendering: pixelated; width: 100vw; max-height: calc(100vh - 40px); object-fit: contain; touch-action: none; background: #000; }
-  #log { white-space: pre-wrap; font: 11px/1.3 ui-monospace, monospace; padding: 4px 10px; max-height: 30vh; overflow: auto; }
+  /* On a phone the bar's eight controls wrapped to two rows and took 76 px of
+     a 720 px screen away from the game. One row that scrolls sideways
+     instead: nothing is lost and the game keeps the height. */
+  @media (max-width: 700px) {
+    #bar { gap: 6px; padding: 6px 8px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    #bar::-webkit-scrollbar { display: none; }
+    #bar button, #bar .linkbtn, #bar label, #bar #stat { flex: 0 0 auto; white-space: nowrap; }
+    #bar button, #bar .linkbtn { padding: 5px 9px; }
+  }
+  /* The stage is whatever height is left, and the canvas is the stage. The
+     drawn picture is centred and letterboxed by object-fit, which is what
+     guestPoint's mapping already assumes. */
+  #stage { flex: 1 1 auto; min-height: 0; }
+  canvas { display: block; image-rendering: pixelated; width: 100%; height: 100%; object-fit: contain; touch-action: none; background: #000; }
+  #log { white-space: pre-wrap; font: 11px/1.3 ui-monospace, monospace; padding: 4px 10px; max-height: 30vh; max-height: 30dvh; overflow: auto; flex: 0 1 auto; }
   body.playing #log { display: none; }
-  body.showlog #log { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; background: rgba(0,0,0,.85); z-index: 6; }
+  body.showlog #log { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; max-height: 40dvh; background: rgba(0,0,0,.85); z-index: 6; }
   #stage { position: relative; }
   /* The touch shell: shown only where the pointer is a finger. Two pads over
      the bottom corners of the canvas; the game's control bar sits at the
@@ -43,13 +62,13 @@
   .k:active, .k.held { background: rgba(255,220,120,.6); color: #000; }
   .k small { display: block; font-weight: 400; font-size: 10px; color: #bbb; margin-top: 2px; }
   .k.held small, .k:active small { color: #333; }
-  #move { left: 8px; bottom: 8px; }
-  #act { right: 8px; bottom: 8px; }
+  #move { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
+  #act { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   #kb { position: absolute; left: -1000px; top: 0; width: 10px; height: 10px; opacity: 0; }
   body.touch .desktop-only { display: none; }
-  #cheatpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(720px, 96vw); max-height: calc(100vh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
+  #cheatpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(720px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #cheatpanel .row { margin: 6px 0; } #cheatkeys .k { height: auto; padding: 8px 6px; flex-direction: column; font-size: 13px; }
-  #menupanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(720px, 96vw); max-height: calc(100vh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
+  #menupanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(720px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #menupanel .row { margin: 6px 0; } .dim { color: #999; font-size: 12px; }
   #menus { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
   .menu { min-width: 150px; background: #262626; border-radius: 8px; padding: 6px; }
@@ -58,9 +77,9 @@
   .menu button:disabled { opacity: .45; }
   .menu hr { border: 0; border-top: 1px solid #444; margin: 4px 0; }
   .menu .key { float: right; color: #999; }
-  #savespanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
+  #savespanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #savespanel .row { margin: 6px 0; }
-  #musicpanel, #patchpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
+  #musicpanel, #patchpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #musicpanel .row, #patchpanel .row { margin: 6px 0; } #musicpanel td, #musicpanel th, #patchpanel td, #patchpanel th { text-align: left; padding: 2px 10px 2px 0; } #musicsource { max-width: 70%; background: #111; color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 6px; } #musicurl { width: 58%; background: #111; color: #ddd; border: 1px solid #444; border-radius: 6px; padding: 6px; }
   #savestable { width: 100%; border-collapse: collapse; font-size: 12px; }
   #savestable td, #savestable th { padding: 4px 6px; border-top: 1px solid #333; text-align: left; }
@@ -210,15 +229,45 @@ document.getElementById('file').addEventListener('change', async e => {
   say(`picked ${f.name}: ${gameBytes.length} bytes`);
 });
 
+// The page is as tall as the phone shows, and this is the belt to the
+// stylesheet's braces. iOS reports `100vh` as the viewport with the browser's
+// toolbars retracted, taller than what is on the screen while they are up:
+// that is what put the bottom of the game under Chrome's toolbar. `100dvh` in
+// the stylesheet is the fix; this takes the smaller of that and innerHeight,
+// so a browser that gets either of them wrong still cannot leave part of the
+// game off the screen. innerHeight does not move when the keyboard opens on
+// iOS -- the keyboard shrinks the visual viewport, not the layout one -- so
+// the game does not resize under the Type button.
+function fitToViewport() {
+  // ... and not while the phone keyboard is up: a browser that does shrink
+  // the layout viewport for it would otherwise shrink the game to half the
+  // screen for as long as the Type button is in use.
+  if (document.activeElement === document.getElementById('kb')) return;
+  document.body.style.height = '';
+  const css = document.body.getBoundingClientRect().height || Infinity;
+  const h = Math.min(css, window.innerHeight || Infinity);
+  if (h > 0 && h < Infinity) document.body.style.height = h + 'px';
+}
+fitToViewport();
+window.addEventListener('resize', fitToViewport);
+window.addEventListener('orientationchange', () => setTimeout(fitToViewport, 120));
+
 const MAC_EPOCH_OFFSET = 2082844800;
 // Cythera's start screen is laid out for 640x480 and the game itself runs at
 // any larger size, its windows free to move. So: portrait keeps 640 wide and
 // fills the height, landscape keeps 480 high and fills the width, and the
-// canvas then covers the viewport at the device's aspect. ?w=&h= overrides.
+// canvas then covers the stage at the device's aspect. ?w=&h= overrides.
+// The space is measured rather than guessed at: the page is a column of the
+// bar and the stage, so what the game gets is the page's height less the
+// bar's, and a guest screen of that aspect is drawn with no letterbox and
+// nothing cut off. Subtracting a nominal 40 px bar instead -- which this did
+// -- was wrong by however much the bar's real height differed, and on a
+// phone the bar was 76. The log is not measured because play hides it.
 function chooseScreen() {
   const q = new URLSearchParams(location.search);
   if (q.get('w') && q.get('h')) return [Math.max(640, +q.get('w')), Math.max(480, +q.get('h'))];
-  const vw = window.innerWidth, vh = Math.max(1, window.innerHeight - 40);
+  const body = document.body.getBoundingClientRect(), bar = document.getElementById('bar').getBoundingClientRect();
+  const vw = Math.max(1, Math.round(body.width)), vh = Math.max(1, Math.round(body.height - bar.height));
   if (vh >= vw) return [640, Math.min(2048, Math.max(480, Math.round(640 * vh / vw)))];
   return [Math.min(2048, Math.max(640, Math.round(480 * vw / vh))), 480];
 }

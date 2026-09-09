@@ -6,6 +6,41 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## The page ran off the bottom of the phone, 9 September 2026
+
+The maintainer, on Chrome on an iPhone 15: "the ratlizard window extends too
+far down … i can't see the character row even". Two faults, both in the page's
+layout, both measured in headless Chrome at 393x720 before and after (the
+script is in the session's scratch space, not the repository; it lays the page
+out in an iframe of the size asked for, because Chrome ignores
+`--window-size` here, and leaves the page's own script out because the module
+fetch never settles headless):
+
+- The canvas was capped at `calc(100vh - 40px)` and stacked under the bar, so
+  the document came to 756 px in a 720 px viewport — 36 px of the game below
+  the fold before iOS is taken into account. On iOS it is worse: `100vh` there
+  is the viewport with the browser's toolbars *retracted*, so the cap is
+  larger than the screen while they are up.
+- The bar's eight controls wrapped to two rows, 76 px rather than the 40 the
+  canvas rule assumed, and `chooseScreen` subtracted the same nominal 40 — so
+  the guest screen was chosen for a space taller than the one it got.
+
+Now: the body is a flex column of a fixed height (`100dvh`, with `100vh` as
+the fallback and a script that takes the smaller of that and `innerHeight`,
+so nothing can fall off a browser that gets either wrong) and does not
+scroll; the bar takes what it needs, the stage takes the rest, and the canvas
+is the stage. `chooseScreen` measures the page's height less the bar's
+instead of guessing. On a phone the bar is one row that scrolls sideways
+rather than two that wrap, which gives the game back 35 px. The pads sit
+above the home indicator (`env(safe-area-inset-bottom)`). After: the document
+is exactly the viewport at 393x720, 393x640 and 852x340, and the drawn
+picture fills the stage with no letterbox and nothing hidden.
+
+**For the maintainer**: does the game now end above Chrome's bottom toolbar,
+and does a bar you swipe sideways suit better than two rows? The iOS half of
+this — that `100dvh` is the height the phone actually shows — is the one part
+headless Chrome cannot check, because an iframe has no browser toolbars.
+
 ## Where things stood on 8 September 2026
 
 ### `ratlizard.github.io` — tip `89ad899`, new on 8 September, live
