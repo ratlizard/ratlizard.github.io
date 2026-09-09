@@ -41,6 +41,20 @@ and does a bar you swipe sideways suit better than two rows? The iOS half of
 this — that `100dvh` is the height the phone actually shows — is the one part
 headless Chrome cannot check, because an iframe has no browser toolbars.
 
+Two things the runners turned up while checking it, neither caused by the
+change and both proved so by running them on the commit before it:
+
+- `www/delv/check_copies.sh` had been failing since grimoire cut its map
+  editor — two comment blocks in `delv-archive.js` had moved on there and the
+  copy here had not. Re-copied; comments only, no code, and `patch_smoke`
+  merges the real patch as before. **A grimoire change to one of the four
+  vendored files does not reach this repository by itself.**
+- `music_smoke` takes the substitute tune as its second argument and it must
+  be the one the start screen plays, `FB7C80EC` (Cythera Theme). Any other
+  tune installs fine and changes nothing the start screen mixes, and the
+  check then reads "installing the tune changed nothing that reached the
+  mixer", which sounds like a fault in the page and is not.
+
 ## Where things stood on 8 September 2026
 
 ### `ratlizard.github.io` — tip `89ad899`, new on 8 September, live
