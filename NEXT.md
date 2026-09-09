@@ -6,6 +6,46 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## Growth is not the freeze, and neither is lazy extraction, 9 September 2026
+
+Two hypotheses tested and both dead, which is worth more than it sounds.
+
+**Growing the heap is not the cost.** The page reserved 64 MB before play and
+the phone said `memory: reserved 64 MB more in 0 ms`. The freeze then happened
+anyway and grew the heap another 36 MB, 346 to 382. So growing is free there,
+the growth inside the frame is a symptom of something allocating, and **the
+reservation was useless by construction** in any case: `memory.grow` called
+from JavaScript adds pages the module's own allocator knows nothing about, so
+it grows again for itself. It is left in only because the measurement it makes
+is worth having; it costs nothing.
+
+**The data is not pulled out of the archive when the game first needs it**,
+which was the maintainer's hypothesis and a good one. `cw_load` expands
+everything up front -- that is what its 145 MB and 210 ms are -- and reading
+`Cythera Data` back off the guest's disk afterwards takes **0.6 ms the first
+time, 0.2 ms after, and grows the heap by nothing**, against 5,608,688 bytes of
+data fork and 1,247,331 of resource fork. Measured with `cw_vfs_stage`, which
+is the same read the patch route makes.
+
+### What the numbers do say
+
+The frame ran **2,400,000 instructions in sixteen calls. Fifteen of them took
+37 ms between them and one took 34,503 ms** -- for the same 150,000
+instructions the others managed in milliseconds. So the cost is a small region
+of guest code, met once, and everything around it runs at full speed.
+
+**So the slice now starts small and grows** -- 20,000 instructions at the start
+of a black stretch, up by half on every call under 8 ms, up to the old 150,000
+-- and any call over 300 ms says how many instructions it ran and at which
+tick, up to eight times. Meeting the expensive region in a 5,000-instruction
+slice says how the cost is spread: one small slice still taking tens of seconds
+means a single instruction or the trap under it, and the tick names where; many
+small slices of a second each mean it is spread across the region. The page
+also stops being held for half a minute by a slice it chose to make big.
+
+**Copy log moved onto the log panel** rather than the bar, which on a phone is
+already a row you have to swipe.
+
 ## The freeze is one slice, and the heap grows inside it, 9 September 2026
 
 The next log from the phone, with the reporting added:
