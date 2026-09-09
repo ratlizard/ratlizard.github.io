@@ -962,8 +962,12 @@ function mergeDelverPatch(baseBytes, patchBytes) {
 }
 
 /* ---- editing a map -------------------------------------------------------
-   Two writers for the map editor in index.html, and they are deliberately the
-   smallest two that could work.
+   Two writers, deliberately the smallest two that could work. The map editor
+   they were written for was cut from index.html in v1.29.0 -- the page reads
+   maps and edits records, and a painting tool was the one thing on it whose
+   cost had no floor -- but the writers and their check stay: a proven writer
+   is cheap to keep and is what any later structured edit of a map would
+   start from.
 
    A map resource is a header, a roof block and then one big-endian tile word
    per square, so **painting terrain is a patch, not a re-serialization**:
@@ -1045,8 +1049,8 @@ function delverPropsAtSquare(records, x, y) {
    (Hector before and after joining the party is the worked example there).
    Two fields are not from it: **nutrition at byte 27**, read out of the
    executable -- `TGameViewer::DoTicks` takes one off byte 27 of this record
-   every game hour (the trace is in the private workbench's `doc/game-clock.md`,
-   and the sheet's Hunger section is drawn from it) -- and byte 28's
+   every game hour (the sheet's Hunger section is drawn from that trace) --
+   and byte 28's
    neighbours, left unnamed. In I.M.Cheater, the community's cheated save,
    the hero's byte 27 is 24 (a full stomach) and byte 28 is 0xFF (255
    training points), which is exactly what the file is famous for.
