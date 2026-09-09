@@ -49,7 +49,7 @@
      themselves; the canvas never did. */
   canvas { display: block; image-rendering: pixelated; width: 100%; height: 100%; object-fit: contain; touch-action: none; background: #000;
            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-  #log { white-space: pre-wrap; font: 11px/1.3 ui-monospace, monospace; padding: 4px 10px; max-height: 30vh; max-height: 30dvh; overflow: auto; flex: 0 1 auto; }
+  #log { white-space: pre-wrap; font: 11px/1.3 ui-monospace, monospace; padding: 4px 10px; max-height: 30vh; max-height: 30dvh; overflow: auto; flex: 0 1 auto; user-select: text; -webkit-user-select: text; }
   body.playing #log { display: none; }
   body.showlog #log { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; max-height: 40dvh; background: rgba(0,0,0,.85); z-index: 6; }
   #stage { position: relative; }
@@ -103,6 +103,7 @@
   <button id="musicbtn" disabled>Music</button>
   <button id="patchbtn" disabled>Patches</button>
   <button id="logbtn">Log</button>
+  <button id="logcopy">Copy log</button>
   <button id="bench" disabled class="desktop-only">Benchmark</button>
   <label class="desktop-only"><input type="file" id="file"> pick a .sit</label>
   <a id="grimoirelink" class="linkbtn" href="https://ratlizard.github.io/grimoire/" title="Cythera's data" target="_blank" rel="noopener">Grimoire</a>
@@ -187,6 +188,21 @@ const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffe
 // than a desktop and growing a WebAssembly memory on one is not free, so if a
 // long frame lines up with a jump here that is the thing to chase.
 let heapSeen = 0;
+// A load grew the module's heap from 282 MB to 318 MB on the maintainer's
+// phone, and the frame it happened in took 34,642 ms for one 150,000
+// instruction slice -- 28 instructions a millisecond where this call measures
+// 54,000 a millisecond on a desktop. Growing is the suspect and this is the
+// experiment: reserve the headroom here, before play, and say how long it
+// took. If growing 64 MB costs tens of seconds then growth is the cost and
+// this has also moved it out of the game; if it is instant then growth is
+// innocent and the 150,000 instructions themselves are where to look next.
+function reserveHeap(mb) {
+  if (!mem || typeof mem.grow !== 'function') return;
+  const pages = Math.round(mb * 1048576 / 65536), t = performance.now();
+  try { mem.grow(pages); }
+  catch (e) { say(`memory: could not reserve ${mb} MB more (${e.message || e})`); return; }
+  say(`memory: reserved ${mb} MB more in ${(performance.now() - t).toFixed(0)} ms`);
+}
 function noteHeap() {
   const mb = mem.buffer.byteLength >> 20;
   if (mb === heapSeen) return mb;
@@ -308,13 +324,16 @@ async function bootOnce() {
   const bytes = await getGame();
   statEl.textContent = 'booting…';
   await new Promise(r => setTimeout(r, 0)); // let the status paint
+  noteHeap();
   const p = wasm.cw_alloc(bytes.length);
   new Uint8Array(mem.buffer, p, bytes.length).set(bytes);
   gameBytes = null; // the module owns the only copy now
+  noteHeap();
   const t0 = performance.now();
   const [sw, sh] = chooseScreen();
   const rc = wasm.cw_load(p, bytes.length, Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET, sw, sh);
   if (rc !== 0) throw new Error(dec.decode(new Uint8Array(mem.buffer, wasm.cw_error_ptr(), wasm.cw_error_len())));
+  noteHeap();
   const restored = await restoreSaves();
   const tunes = await restoreMusic();
   const patched = await applyPatches();
@@ -323,8 +342,10 @@ async function bootOnce() {
   canvas.width = W; canvas.height = H;
   say(`booted in ${(performance.now() - t0).toFixed(0)} ms, screen ${W}x${H}, ${wasm.cw_instructions_per_tick()} instructions/tick, ${restored} save file(s) restored` + (tunes ? `, ${tunes} substitute tune(s) installed` : '') + (patched ? `, ${patched} patch(es) applied` : ''));
   statEl.textContent = '';
-  booted = true;
   noteHeap();
+  reserveHeap(64);
+  noteHeap();
+  booted = true;
 }
 
 // --- saves: IndexedDB, one record per file of the game's disk that the
@@ -1226,6 +1247,27 @@ function unlockAudio() {
     startWorklet();
   }
   if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+}
+// The log is the only way anything about a run on a phone gets back here, so
+// it has to be possible to take it away. The clipboard needs a gesture, which
+// a press is; where it is refused the text is selected instead, which leaves
+// the phone's own Copy one tap away.
+{
+  const btn = document.getElementById('logcopy');
+  btn.addEventListener('click', async () => {
+    const text = logEl.textContent;
+    const done = () => { const was = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = was; }, 1500); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); done(); return; }
+    } catch (e) {}
+    document.body.classList.add('showlog');
+    try {
+      const r = document.createRange(); r.selectNodeContents(logEl);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      btn.textContent = 'select and copy';
+      setTimeout(() => { btn.textContent = 'Copy log'; }, 3000);
+    } catch (e) { say('could not copy the log: ' + (e.message || e)); }
+  });
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && audioCtx) audioCtx.resume().catch(() => {}); });
 // Made in the tap with the context, because a page that waits until the first

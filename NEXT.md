@@ -6,6 +6,75 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## The freeze is one slice, and the heap grows inside it, 9 September 2026
+
+The next log from the phone, with the reporting added:
+
+```
+memory: the module's heap is 282 MB
+play: a 34642 ms slice of 150,000 instructions; cutting to 37,500
+play: a 34683 ms frame in a black screen at tick 2104 — 34682 ms guest
+(1800000 instructions over 7 ticks), 1 ms drawing, heap 318 MB (was 282 at
+the start of it), 0 lines logged by the module
+memory: the module's heap grew to 318 MB from 282
+```
+
+**One call of 150,000 instructions took 34,642 ms**, so the slice-shrinking did
+not help: the first call was the whole freeze. The module logged nothing, so
+the page's `say` is not it. What did happen is that **the heap grew 36 MB
+inside that frame**.
+
+Growing is the suspect and it is not proved. Against it: the same boot grows
+the heap from 4.3 MB to 282 MB and takes 384 ms on the same phone, so growing
+is not slow in itself there. For it: nothing else in the frame is unusual, and
+1.8 M instructions over 7 ticks is an ordinary ratio at 415,628 a tick.
+
+**So the page now runs the experiment.** After `cw_start` it reserves 64 MB
+more and says how long that took. Tens of seconds means growth is the cost,
+and the reservation has also moved it out of the game and into the boot; a
+few milliseconds means growth is innocent and the 150,000 instructions are
+where to look next.
+
+### Where the 282 MB goes, measured here
+
+Heap after each step of the page's own boot, against the local 6.2 MB archive
+rather than the 28 MB one the page fetches:
+
+| | |
+|---|---|
+| a fresh module | 4.3 MB |
+| `cw_alloc` for the archive | 10.4 MB |
+| `cw_load`, which makes a 64 MB guest | 155.3 MB |
+| the restored saves, `cw_start` | 155.3 MB |
+| the 80 M instruction fast-forward | 171.5 MB |
+
+**`cw_load` is 145 MB for a 64 MB machine**, so about 80 MB goes somewhere
+other than the guest's RAM, and the phone's 282 MB is this plus the larger
+archive it fetches from archive.org — `Cythera installers.sit` is 28 MB where
+`Cythera Installed Folder.sit` is 6.2 MB. **Publishing a smaller source, or
+freeing the packed copy sooner, is the lever on the high-water mark** and is
+worth more than anything the page can do about growth. The heap is now said at
+each boot step so the phone's figures can be placed against these.
+
+### Three things from the same message
+
+- **A Copy button beside Log**, asked for directly: the clipboard where the
+  browser allows it, and where it does not, the log is selected so the phone's
+  own Copy is one tap away. The log is selectable text now, which it was not.
+- **The bar scrolls during the freeze but its buttons do not answer.** That
+  settles the contradiction from the round before: scrolling an overflowing
+  element is the compositor's, not the main thread's, so the page looks alive
+  while nothing in it works. The main thread is blocked exactly as the 34,683
+  ms frame says.
+- **Dragging works now** — the `-webkit-touch-callout` and `user-select`
+  suppression on the canvas was the fix — **but the inventory does not redraw
+  until the character window's tab is changed.** That is the guest not
+  invalidating its own window rather than anything the page does, since the
+  page presents the whole framebuffer every frame. **Fork work**, alongside the
+  window-frame drawing already known to be called only on reveal and after a
+  move; not raised in `doc/SYSTEMLESS-NEXT.md` by this session, which did not
+  work in that tree.
+
 ## The freeze named itself, 9 September 2026
 
 The slow-frame line worked. From his phone:
