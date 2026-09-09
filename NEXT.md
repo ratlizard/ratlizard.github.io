@@ -40,13 +40,15 @@ The page spends whole frames off the wall clock -- a black screen while a room
 or a save loads, and the catch-up after -- and both branches drained the
 runner's audio and dropped it, with the reasoning that it "belongs to a moment
 that will not be played". It does not: the guest mixes in proportion to its
-own clock, about 8,800 samples for every 24 ticks it advances, and during that
-work the guest clock runs at roughly real time, so those frames hold real
-music. They are carried now, newest ring-full first.
+own clock, about 8,800 samples for every 24 ticks it advances, so those frames
+hold real music. They are carried now, newest ring-full first. **Whether that
+is more or less music than the time it took to make was not measured through
+an actual load** -- see the third item -- and both directions are covered: a
+guest ahead of real time overflows the ring and one behind it runs the ring
+down.
 
-The ring drops the oldest when it overflows, which a load does to it about
-once a second, and **that drop is now cross-faded like a gap rather than
-stepped over** -- and the cross-fade carries the old wave on at the speed it
+The ring drops the oldest when it overflows, and **that drop is now
+cross-faded like a gap rather than stepped over** -- and the cross-fade carries the old wave on at the speed it
 was going rather than holding it still, because a held value is a corner and
 a corner is what is heard. Two negative controls hold that up: skipping three
 samples at every feed reads 1.9e-1 against a 7.2e-3 allowance, and stepping

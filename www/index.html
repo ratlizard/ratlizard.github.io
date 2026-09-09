@@ -1080,9 +1080,11 @@ class GuestAudio extends AudioWorkletProcessor {
       this.written += s.length;
       // Never write over what has not been read: drop the oldest instead, and
       // treat the jump that leaves in the stream the way a gap is treated, so
-      // it is cross-faded rather than stepped over. A load fills this faster
-      // than it empties -- the guest runs about half again real time while it
-      // works -- so this happens about once a second while one is going on.
+      // it is cross-faded rather than stepped over. Whether a load fills this
+      // faster than it empties depends on the device: the runner mixes in
+      // proportion to the guest's clock, so a guest running ahead of real
+      // time overflows here and one falling behind runs it dry. Both are
+      // covered, and neither has been measured through an actual load.
       if (this.written - this.read > cap) { this.read = this.written - cap; this.wasDry = true; }
     };
   }
@@ -1203,10 +1205,11 @@ function resetAudio() {
 // away, which is why the music stopped between screens. The guest mixes in
 // proportion to its own clock, about 8,800 samples for every 24 ticks it
 // advances, so those frames have real music in them; it is only that there
-// can be far more of it than the time it took to make. So it is carried
-// instead, newest ring-full first, and where the guest falls behind instead
-// the ring runs down and the worklet's own fade covers it. The old path
-// cannot hold a backlog, so it still drops.
+// be more or less of it than the time it took to make, depending on the
+// device. So it is carried instead, newest ring-full first: a guest ahead of
+// real time overflows the ring, which cross-fades where it drops the oldest,
+// and a guest behind it runs the ring down, which the worklet's own fade
+// covers. The old path cannot hold a backlog, so it still drops.
 function carryAudio() {
   if (audioNode) pushAudio(); else resetAudio();
 }
