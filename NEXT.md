@@ -6,6 +6,71 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## After the crackle: static, the pause between screens, the load, 9 September 2026
+
+The maintainer, on the same day: "Crackle gone but there's still underlying
+static noise. The music also pauses between screens, and the long file-open
+freeze is still there." Three separate things.
+
+### The static is the game's own 8-bit sound, as far as anything here can tell
+
+Not the page. Twenty seconds of the theme out of the module were measured
+rather than described:
+
+| | |
+|---|---|
+| samples at exactly the silent level | 20,439 of 441,600, so silence is silent |
+| the music's own noise, if 8-bit quantisation were flat | 35 dB below its rms |
+| under one 0.37 s stretch, the median spectral bin | 66 dB below the strongest |
+| what the page's reading between samples adds above 11 kHz | −47 dB of the total |
+| what a 16-tap windowed sinc would add instead | −52 dB |
+
+So a better resampler is worth 5 dB in a band above 11 kHz, which is not what
+anyone means by static, and it was not done. What is left is the source: an
+8-bit stream at 22,050 Hz has a hiss about 35 dB under the music, and on a
+phone with headphones that is audible where it never was through a Macintosh
+speaker. **The WAV was sent to the maintainer to listen to**, since the
+question of whether that is the noise he means is one only he can answer. If
+it is, the only cure is to change the game's sound rather than reproduce it,
+which is his call, not a bug.
+
+### The music stopped between screens because the page threw that sound away
+
+The page spends whole frames off the wall clock -- a black screen while a room
+or a save loads, and the catch-up after -- and both branches drained the
+runner's audio and dropped it, with the reasoning that it "belongs to a moment
+that will not be played". It does not: the guest mixes in proportion to its
+own clock, about 8,800 samples for every 24 ticks it advances, and during that
+work the guest clock runs at roughly real time, so those frames hold real
+music. They are carried now, newest ring-full first.
+
+The ring drops the oldest when it overflows, which a load does to it about
+once a second, and **that drop is now cross-faded like a gap rather than
+stepped over** -- and the cross-fade carries the old wave on at the speed it
+was going rather than holding it still, because a held value is a corner and
+a corner is what is heard. Two negative controls hold that up: skipping three
+samples at every feed reads 1.9e-1 against a 7.2e-3 allowance, and stepping
+over the drop instead of fading it reads 6.3e-2. Both fail the check that
+covers them.
+
+### The file-open freeze was not measured, and here is why
+
+`load_timing.mjs` did not open anything. It settles, clicks Onward through the
+headless path, and times catch-up calls -- but the README already records that
+a click delivered under Node does not register, and the sound path it prints
+at the end still says the start-screen tune is playing, at tick 2,942, after
+600 million instructions and 28 seconds. **What it timed was the game sitting
+on its start screen at full instruction budget**, about 18 M instructions a
+second, not a load. Any figure taken from that run for a load is wrong.
+
+**What would settle it in one line from the maintainer**: the page already
+logs `play: the screen was black for N s; ran unpaced until the game drew
+again` and `play: caught up after N frames`. Pressing Log after opening a
+character and reading those two lines back says whether the freeze is the
+black-screen branch, the catch-up branch or neither, and how long it lasts.
+Without that, the next step is the playthrough kit rather than the Node
+runners, because that is what can actually deliver a click.
+
 ## The crackle was the page splicing audio buffers, 9 September 2026
 
 The maintainer: "The music is kind of crackly on ratlizard, has been for a

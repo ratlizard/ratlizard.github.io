@@ -1072,14 +1072,18 @@ class GuestAudio extends AudioWorkletProcessor {
     this.step = o.processorOptions.rate / sampleRate;
     this.buf = new Float32Array(o.processorOptions.capacity);
     this.read = 0; this.written = 0; this.last = 0; this.vel = 0; this.starved = 0; this.n = 0;
-    this.wasDry = false; this.hold = 0; this.mix = 1;
+    this.wasDry = false; this.hold = 0; this.holdVel = 0; this.mix = 1;
     this.port.onmessage = e => {
       if (e.data === 'reset') { this.read = 0; this.written = 0; this.last = 0; this.vel = 0; this.wasDry = true; return; }
       const s = e.data, cap = this.buf.length;
       for (let i = 0; i < s.length; i++) this.buf[(this.written + i) % cap] = s[i];
       this.written += s.length;
-      // Never write over what has not been read: drop the oldest instead.
-      if (this.written - this.read > cap) this.read = this.written - cap;
+      // Never write over what has not been read: drop the oldest instead, and
+      // treat the jump that leaves in the stream the way a gap is treated, so
+      // it is cross-faded rather than stepped over. A load fills this faster
+      // than it empties -- the guest runs about half again real time while it
+      // works -- so this happens about once a second while one is going on.
+      if (this.written - this.read > cap) { this.read = this.written - cap; this.wasDry = true; }
     };
   }
   process(_, outputs) {
@@ -1105,9 +1109,20 @@ class GuestAudio extends AudioWorkletProcessor {
       // source while the output had faded away, and stepping straight to it
       // is the click the fade was there to avoid. Cross-fade from where the
       // fade got to instead, over about four milliseconds.
-      if (this.wasDry) { this.hold = this.last; this.mix = 0; this.wasDry = false; }
+      if (this.wasDry) { this.hold = this.last; this.holdVel = this.vel; this.mix = 0; this.wasDry = false; }
       let outv = v;
-      if (this.mix < 1) { this.mix = Math.min(1, this.mix + 0.004); outv = this.hold * (1 - this.mix) + v * this.mix; }
+      if (this.mix < 1) {
+        // Cross-fade from what was being heard to what is arriving. The thing
+        // being faded out has to carry on moving the way the wave was moving,
+        // by the same rule the gap itself uses: holding it still is a corner,
+        // and a corner is what is heard. A raised cosine because a straight
+        // ramp starts and stops abruptly, which is two more corners.
+        this.holdVel *= 0.8;
+        this.hold = Math.max(-1, Math.min(1, (this.hold + this.holdVel) * 0.999));
+        this.mix = Math.min(1, this.mix + 0.004);
+        const w = 0.5 - 0.5 * Math.cos(Math.PI * this.mix);
+        outv = this.hold * (1 - w) + v * w;
+      }
       this.vel = outv - this.last; out[i] = this.last = outv;
       this.read += this.step;
     }
@@ -1183,6 +1198,18 @@ function resetAudio() {
   wasm.cw_audio_drain(); nextAudioTime = 0;
   if (audioNode) { audioNode.port.postMessage('reset'); audioQueued = 0; audioConsumed = 0; }
 }
+// The frames the page spends off the wall clock -- a black screen while a room
+// or a save loads, and the catch-up that follows -- used to throw their sound
+// away, which is why the music stopped between screens. The guest mixes in
+// proportion to its own clock, about 8,800 samples for every 24 ticks it
+// advances, so those frames have real music in them; it is only that there
+// can be far more of it than the time it took to make. So it is carried
+// instead, newest ring-full first, and where the guest falls behind instead
+// the ring runs down and the worklet's own fade covers it. The old path
+// cannot hold a backlog, so it still drops.
+function carryAudio() {
+  if (audioNode) pushAudio(); else resetAudio();
+}
 function audioReport() {
   if (!audioCtx) return;
   const media = silentMedia ? (silentMedia.paused ? 'paused' : 'playing') : 'none';
@@ -1208,10 +1235,14 @@ function pushAudio() {
   // for a frame or two and hand the speaker two streams at once.
   if (audioMode === 'pending') return;
   if (audioNode) {
-    const f = new Float32Array(n);
-    for (let i = 0; i < n; i++) f[i] = (src[i] - 128) / 128;
+    // A frame off the wall clock can leave seconds of sound behind it. Only
+    // the newest ring-full is worth posting: the rest would be dropped at the
+    // far end anyway, and it is the music the game is playing now.
+    const keep = Math.min(n, AUDIO_CAPACITY), from = n - keep;
+    const f = new Float32Array(keep);
+    for (let i = 0; i < keep; i++) f[i] = (src[from + i] - 128) / 128;
     audioNode.port.postMessage(f, [f.buffer]);
-    audioQueued += n;
+    audioQueued += keep;
     return;
   }
   const buf = audioCtx.createBuffer(1, n, RATE), ch = buf.getChannelData(0);
@@ -1319,7 +1350,7 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
         blackSince = 0; blackAt = 0;
       }
       if (now - winT > 1000) { statEl.textContent = `${W}x${H}, ${(insWindow / ((now - winT) / 1000) / 1e6).toFixed(1)} M/s, drawing nothing`; insWindow = 0; winT = now; }
-      resetAudio();
+      carryAudio();
       requestAnimationFrame(frame);
       return;
     }
@@ -1345,8 +1376,8 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
       startTick = wasm.cw_tick(); t0 = performance.now(); lastT = t0;
       if (catchingUp % 3 === 1) present();
       if (now - winT > 1000) { statEl.textContent = `${W}x${H}, ${(insWindow / ((now - winT) / 1000) / 1e6).toFixed(1)} M/s, catching up`; insWindow = 0; winT = now; }
-      // Whatever was mixed while behind belongs to time already gone.
-      resetAudio();
+      // The sound made while behind is the music the game is playing; carry it.
+      carryAudio();
       requestAnimationFrame(frame);
       return;
     }

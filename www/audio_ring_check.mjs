@@ -118,17 +118,22 @@ function roughest(o, skip = 256) {
         `roughest ${rough.worst.toExponential(2)} at sample ${rough.at}, allowed ${(2 * KNOT).toExponential(2)}`);
 }
 
-// 3. a ring flooded past its capacity stays bounded and keeps playing
+// 3. a ring flooded past its capacity stays bounded, keeps playing, and does
+//    not step where it drops the oldest -- which is what a load does to it
 {
   const cap = 1024;
   const { p, feed, sent } = makeProcessor(cap);
   const o = [];
   feed(sine(512)); run(p, 2, o);
+  const floodFrom = o.length;
   for (let i = 1; i < 8; i++) feed(sine(512, i * 512));   // 4096 into a 1024 ring, mid-play
   run(p, 8, o);
   let peak = 0; for (const v of o) peak = Math.max(peak, Math.abs(v));
   check(peak <= 1, 'a flooded ring stays inside full scale', `peak ${peak.toFixed(3)}`);
   check(peak > 0.4, 'and is still playing', `peak ${peak.toFixed(3)}`);
+  const rough = roughest(o.slice(floodFrom - 2), 0);
+  check(rough.worst < 2 * KNOT, 'and does not step where it drops the oldest',
+        `roughest ${rough.worst.toExponential(2)}, allowed ${(2 * KNOT).toExponential(2)}`);
   const report = sent.filter(x => x && typeof x === 'object' && 'consumed' in x).pop();
   check(!!report, 'it reports what it has consumed',
         report ? `consumed ${report.consumed.toFixed(1)}, ran dry ${report.starved} times` : 'nothing reported');
