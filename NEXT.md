@@ -6,6 +6,71 @@ workspace derives. Split out of the workspace handoff on 8 September 2026; the
 standing rules are in the workspace `NEXT-SESSION.md`. The fork it is built
 from has its own handoff, `cythera-workbench/doc/SYSTEMLESS-NEXT.md`.
 
+## The freeze named itself, 9 September 2026
+
+The slow-frame line worked. From his phone:
+
+```
+play: a 37958 ms frame in a black screen at tick 1729 — 37957 ms guest
+(1050000 instructions), 1 ms drawing
+```
+
+**Thirty-eight seconds in one frame, all of it inside the guest, for a
+million instructions.** That is 28 instructions a millisecond. The same call
+the black-screen branch makes, `cw_run_catchup(150000, tick + 120)`, was
+measured here at **2.8 ms for the full 150,000**, or 54,000 a millisecond,
+thirty calls running and never once skipping a tick. His phone is about three
+times slower than this machine, not two thousand, **so this is not processor
+speed and the load is not simply a lot of work**. Seven calls of the slice at
+about 5.4 seconds each make up the frame.
+
+Three things could make one call take thousands of times longer, and the page
+now reports all three beside a slow frame: **how much guest clock the frame
+covered**, **whether the module's heap moved** (said on its own whenever it
+changes, since growing a WebAssembly memory on a phone is not free and iOS has
+far less room than a desktop), and **how many lines the module logged through
+the page** -- `say` appends to a DOM node, so a guest writing to it in a loop
+would cost exactly this shape. The module logged nothing at all through a boot
+and thirty catch-up calls here, so that one is unlikely but was cheap to rule
+in or out.
+
+**The page no longer lets one call block it either.** The loop checked the
+wall clock between calls, which bounds nothing when a single call takes
+seconds. A call that runs over 150 ms now quarters the slice for the next one,
+down to a floor of 10,000 instructions, and quick calls let it grow back to
+150,000. That is also a measurement: if the cost is proportional to the
+instructions the page stays answering, and if one operation inside the slice
+is what costs, the shrinking will stop helping and say so.
+
+### The ring is clean, so the static is not the audio path
+
+The first report of the session, five seconds in: `ran dry 0 times since the
+last of these (0 in all)`, with 2,381 samples ahead. **The second said
+1,798,466, which is 37.5 seconds at 48 kHz and is the frozen frame itself** --
+a blocked main thread pushes nothing, so of course the ring emptied. Nothing
+else in the session ran it dry. That closes the question the previous round
+left open: **the delivery is not adding noise, and the static is the game's own
+8-bit sound unless the WAV sent on 9 September turns out to be clean.**
+
+### Two smaller things from the same message
+
+- **`game.sit: 404` is normal and now says so.** `www/game.sit` is a gitignored
+  symlink for the Node runners and is not deployed, so the live page always
+  misses it and goes to archive.org. The line read as a fault; it now reads
+  `no game.sit beside the page; going to archive.org`.
+- **A drag out of the inventory bar was being taken by iOS.** The canvas had
+  `touch-action: none` but never `user-select` or `-webkit-touch-callout`, so a
+  finger held on it could raise the selection or callout gesture, which cancels
+  the pointer stream part way and leaves the game seeing a click rather than a
+  drag. The pads had said this for themselves since they were built; the canvas
+  had not. **Unverified on a device.**
+
+**Still to reconcile**: he says the log and the page's own bar keep working
+while the game is frozen, but a 37,957 ms frame is one turn of the animation
+loop, and nothing on the page can answer during it. Either the freeze he
+describes is a different and longer state than that frame, or the frame is not
+the whole story.
+
 ## What the maintainer's log said, 9 September 2026
 
 He pasted the Log from his phone, which settled more than the three items did.

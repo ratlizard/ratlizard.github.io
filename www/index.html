@@ -42,7 +42,13 @@
      drawn picture is centred and letterboxed by object-fit, which is what
      guestPoint's mapping already assumes. */
   #stage { flex: 1 1 auto; min-height: 0; }
-  canvas { display: block; image-rendering: pixelated; width: 100%; height: 100%; object-fit: contain; touch-action: none; background: #000; }
+  /* A drag out of the game's inventory bar is a press, a move and a release,
+     and iOS will take that gesture away as a text selection or a callout
+     unless it is told not to -- the pointer stream is cancelled part way and
+     the game sees a click rather than a drag. The pads say this for
+     themselves; the canvas never did. */
+  canvas { display: block; image-rendering: pixelated; width: 100%; height: 100%; object-fit: contain; touch-action: none; background: #000;
+           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   #log { white-space: pre-wrap; font: 11px/1.3 ui-monospace, monospace; padding: 4px 10px; max-height: 30vh; max-height: 30dvh; overflow: auto; flex: 0 1 auto; }
   body.playing #log { display: none; }
   body.showlog #log { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; max-height: 40dvh; background: rgba(0,0,0,.85); z-index: 6; }
@@ -175,7 +181,19 @@ const logEl = document.getElementById('log'), statEl = document.getElementById('
 function say(s) { logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; console.log(s); }
 const dec = new TextDecoder();
 let wasm, mem;
-const env = { cw_log(p, n) { say(dec.decode(new Uint8Array(mem.buffer, p, n))); } };
+let logCalls = 0;
+const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffer, p, n))); } };
+// The module's heap, said once whenever it changes. A phone has far less room
+// than a desktop and growing a WebAssembly memory on one is not free, so if a
+// long frame lines up with a jump here that is the thing to chase.
+let heapSeen = 0;
+function noteHeap() {
+  const mb = mem.buffer.byteLength >> 20;
+  if (mb === heapSeen) return mb;
+  say(heapSeen ? `memory: the module's heap grew to ${mb} MB from ${heapSeen}` : `memory: the module's heap is ${mb} MB`);
+  heapSeen = mb;
+  return mb;
+}
 window.addEventListener('error', e => say('error: ' + (e.message || e)));
 window.addEventListener('unhandledrejection', e => say('error: ' + (e.reason && e.reason.stack || e.reason)));
 
@@ -218,7 +236,14 @@ async function getGame() {
     const t0 = performance.now();
     let res;
     try { res = await fetch(url); } catch (e) { say(`${url}: ${e.message}`); continue; }
-    if (!res.ok) { say(`${url}: ${res.status}`); continue; }
+    if (!res.ok) {
+      // `game.sit` beside the page is a symlink for the Node runners and is
+      // not deployed, so on the live site it is always missing. That is the
+      // normal path to archive.org, not a fault, and it used to read as one.
+      if (res.status === 404 && !/^https?:/.test(url)) say(`no ${url} beside the page; going to archive.org`);
+      else say(`${url}: ${res.status}`);
+      continue;
+    }
     gameBytes = new Uint8Array(await res.arrayBuffer());
     gameId = url.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9._-]+/g, '_');
     say(`game fetched from ${url}: ${gameBytes.length} bytes in ${(performance.now() - t0).toFixed(0)} ms`);
@@ -299,6 +324,7 @@ async function bootOnce() {
   say(`booted in ${(performance.now() - t0).toFixed(0)} ms, screen ${W}x${H}, ${wasm.cw_instructions_per_tick()} instructions/tick, ${restored} save file(s) restored` + (tunes ? `, ${tunes} substitute tune(s) installed` : '') + (patched ? `, ${patched} patch(es) applied` : ''));
   statEl.textContent = '';
   booted = true;
+  noteHeap();
 }
 
 // --- saves: IndexedDB, one record per file of the game's disk that the
@@ -1351,7 +1377,44 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
   function noteSlowFrame(now, where, guestMs, drawMs, steps) {
     const total = performance.now() - now;
     if (total < 250) return;
-    say(`play: a ${total.toFixed(0)} ms frame in ${where} at tick ${wasm.cw_tick()} — ${guestMs.toFixed(0)} ms guest (${steps} instructions), ${drawMs.toFixed(0)} ms drawing`);
+    // 1,050,000 instructions in 37,957 ms on the phone is about 28 a
+    // millisecond, where the same call on a desktop manages 54,000. That is
+    // not a difference in processor speed, so the three things that could
+    // make one call take thousands of times longer are reported with it: how
+    // much guest clock it covered, whether the module's heap moved, and
+    // whether the guest was writing to the log through the page.
+    const ticks = wasm.cw_tick() - frameTick0, heap = mem.buffer.byteLength >> 20;
+    say(`play: a ${total.toFixed(0)} ms frame in ${where} at tick ${wasm.cw_tick()} — ` +
+        `${guestMs.toFixed(0)} ms guest (${steps} instructions over ${ticks} ticks), ` +
+        `${drawMs.toFixed(0)} ms drawing, heap ${heap} MB${heap !== frameHeap0 ? ` (was ${frameHeap0} at the start of it)` : ''}, ` +
+        `${logCalls - frameLogs0} lines logged by the module`);
+  }
+  let frameTick0 = 0, frameHeap0 = 0, frameLogs0 = 0;
+  // How many instructions to hand the guest in one uninterruptible go while
+  // the page is off the wall clock. The loop that calls it checks the clock
+  // between calls, which bounds nothing if a single call takes seconds: the
+  // maintainer's phone spent 37,957 ms on seven of them. So a call that runs
+  // long shrinks the next one, and quick calls let it grow back. If the cost
+  // turns out to be proportional to the instructions, this alone keeps the
+  // page answering; if one operation inside the slice is what costs, the
+  // shrinking will stop helping and say so by not helping.
+  let catchSlice = SLICE, sliceSaid = false;
+  function runCatchup(now, budgetMs) {
+    let s = 0;
+    while (performance.now() - now < budgetMs) {
+      const c0 = performance.now();
+      const r = wasm.cw_run_catchup(catchSlice, wasm.cw_tick() + 120);
+      const took = performance.now() - c0;
+      if (took > 150 && catchSlice > 10_000) {
+        catchSlice = Math.max(10_000, Math.floor(catchSlice / 4));
+        if (!sliceSaid) { say(`play: a ${took.toFixed(0)} ms slice of ${(catchSlice * 4).toLocaleString()} instructions; cutting to ${catchSlice.toLocaleString()}`); sliceSaid = true; }
+      } else if (took < 20 && catchSlice < SLICE) {
+        catchSlice = Math.min(SLICE, Math.round(catchSlice * 1.25));
+      }
+      if (!r || !wasm.cw_running()) break;
+      s += r;
+    }
+    return s;
   }
   // Cycles per tick follow what this device delivers: the runner's default
   // is the 25 MHz profile, and a phone that manages 21 M instructions a
@@ -1363,6 +1426,7 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
   function frame() {
     if (mode !== 'play') return;
     const now = performance.now();
+    frameTick0 = wasm.cw_tick(); frameHeap0 = mem.buffer.byteLength >> 20; frameLogs0 = logCalls;
     const deadline = startTick + Math.floor((now - t0) / 1000 * VBL_HZ);
     // A guest that has run ahead of the wall clock is left alone until the
     // clock catches up: that is what pacing is. Re-basing the clock on it
@@ -1386,13 +1450,8 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     else if (!blackSince) { blackSince = now; }
     if (blackSince && now - blackSince < 8000) {
       if (!blackAt) blackAt = now;
-      let s = 0;
       const g0 = performance.now();
-      while (performance.now() - now < 42) {
-        const r = wasm.cw_run_catchup(SLICE, wasm.cw_tick() + 120);
-        if (!r || !wasm.cw_running()) break;
-        s += r;
-      }
+      const s = runCatchup(now, 42);
       const gMs = performance.now() - g0;
       insWindow += s;
       startTick = wasm.cw_tick(); t0 = performance.now(); lastT = t0;
@@ -1419,13 +1478,8 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     // capped at 120 ticks of guest clock, two seconds, which keeps it to a
     // few tens of milliseconds whatever the guest is doing.
     if (wasm.cw_tick() < deadline - 20) {
-      let s = 0;
       const g0 = performance.now();
-      while (performance.now() - now < 42 && s < 60_000_000) {
-        const r = wasm.cw_run_catchup(SLICE, wasm.cw_tick() + 120);
-        if (!r || !wasm.cw_running()) break;
-        s += r;
-      }
+      const s = runCatchup(now, 42);
       const gMs = performance.now() - g0;
       insWindow += s; catchingUp++;
       startTick = wasm.cw_tick(); t0 = performance.now(); lastT = t0;
@@ -1474,6 +1528,7 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
       }
       statEl.textContent = `${W}x${H}, ${(rate / 1e6).toFixed(1)} M/s, ${wasm.cw_tick() - deadline} ticks, ${(ipt / 1000).toFixed(0)}k/tick`;
       insWindow = 0; winT = now;
+      noteHeap();
       if (++reports === 5 || reports === 30) audioReport();
     }
     pushAudio();
