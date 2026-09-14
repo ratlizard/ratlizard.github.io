@@ -26,7 +26,7 @@ never assumed. **You are in `ratlizard.github.io`.**
 |---|---|
 | **`ratlizard/ratlizard.github.io`** | **the site. This one.** |
 | `ratlizard/wolflizard` | the fork of benletchford/systemless that this binds to, on branch `cythera-detailed`. Checked out beside this one as `wolflizard/` |
-| `ratlizard/alchemy` | the archive of retired attempts at running the game off a Macintosh; this page lived there until 8 September 2026 |
+| `ratlizard/alchemy` | dormant rather than archived: attempts at running the game off a Macintosh, resumable but not being worked on; this page lived there until 8 September 2026 |
 | `ratlizard/grimoire` | the public site of browser tools that read Cythera's files |
 | `ratlizard/cythera-workbench` | private. The Python tools and the notes |
 
