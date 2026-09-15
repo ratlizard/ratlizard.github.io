@@ -608,7 +608,7 @@ pub extern "C" fn cw_render() -> *const u8 {
         } = s;
         let screen_mode = runner.dispatcher().screen_mode;
         let clut = *runner.dispatcher().device_clut;
-        let gamma: DisplayGamma = *runner.dispatcher().device_gamma;
+        let gamma: DisplayGamma = runner.dispatcher().device_gamma();
         display::render_screen_into_with_gamma(runner.bus(), screen_mode, &clut, &gamma, frame);
         let d = runner.dispatcher();
         if d.cursor_visible() {
