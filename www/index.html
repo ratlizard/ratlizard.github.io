@@ -94,9 +94,13 @@
   .k.held small, .k:active small { color: #333; }
   /* Each command is one of the game's own letter keys, and the key is the
      word's first letter every time. It was spelled out under the word --
-     "Get G", "Move M cancels" -- which said the same thing twice and ran
-     "Move M cancels" across the edge of the pad. The letter is the word's
-     own first letter now, weighted and brightened; the cell is one word. */
+     "Get G", "Move M cancels" -- which said the same thing twice. The word's
+     own first letter carries it now, weighted and brightened; one word to a
+     cell. (An earlier version of this comment blamed "Move M cancels" for the
+     pad overflowing its own box. It did not: measuring every cell put that on
+     Type with "keyboard" beside it, which is why those two stack. Left here
+     because the wrong reading was a reading of the source, and the right one
+     needed a measurement.) */
   .k b { font-weight: 800; color: #fff; }
   .k.held b, .k:active b { color: #000; }
   #move { left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); }
