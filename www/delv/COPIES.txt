@@ -3,7 +3,7 @@ here was copied from. check_copies.sh compares the files themselves when
 that repository is checked out beside this one; these hashes say which
 version was taken when it is not.
 
-9931624aeda4cd7f2ad27a90230a2c7ecc63b2eb0fc1e306b32b5264b1c60ff0  mac-bytes.js
-497b72e0919ece3cf48c85564143ca8f91b84a0355fbfbdc76c20d3227a6ccd0  mac-containers.js
+a618319db71418a8f0a9b8cf94c6498748bcd1248ee1151227005fbb02c08767  mac-bytes.js
+81e8fd38d52f84f215ef3ec0690612b4bb7b8f55b53268decd6aee64506354f1  mac-containers.js
 381be66dfb08c411cdbe6c134c66bae54622b0eada77dac12ba81d20f2ded91e  mac-stuffit.js
-b6e1a6abccadae09c468c25dec6075315f4f1ad5b2d245b5f895d1cf7c2f53e3  delv-archive.js
+89bc2f8f92cff7106b0093901f04baec1a7ebf397c62cc017387b826d76ffdf7  delv-archive.js

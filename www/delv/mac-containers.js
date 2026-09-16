@@ -114,7 +114,7 @@ function binhexDecode(bytes) {
 function binhexSplitForks(d) {
   let p = 0;
   const nameLen = d[p++];
-  if (nameLen < 1 || nameLen > 63 || p + nameLen + 17 > d.length)
+  if (nameLen < 1 || nameLen > 63 || p + nameLen + 21 > d.length)   // version, type, creator, flags, two lengths, CRC
     throw new Error('BinHex header is malformed');
   const name = decodeMacRoman(d.subarray(p, p + nameLen)); p += nameLen;
   p += 1;                                        // version

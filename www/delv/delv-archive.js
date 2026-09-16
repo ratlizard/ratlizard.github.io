@@ -3,7 +3,7 @@
  * inside.
  *
  * This file, delv-graphics.js and delv-script.js were the Delver-specific half
- * of cythera_data_viewer.html's inline script, which had reached 9,800 lines.
+ * of index.html's inline script, which had reached 9,800 lines.
  * They came out because at that size the code that decodes a 1999 game and the
  * code that draws a web page had become indistinguishable, and because the two
  * delvmod cross-checks -- the only things here that can tell a wrong decoder
@@ -100,8 +100,8 @@ function parseCompositionWord(t) {
 }
 
 // BinHex 4.0, MacBinary and AppleSingle/AppleDouble are decoded by
-// js/mac-containers.js, which resource_fork_browser.html loads as well -- both
-// pages had their own copy, and each had fixed a bug the other still had.
+// js/mac-containers.js. The retired resource fork browser page loaded it as
+// well: both pages had their own copy, and each had fixed a bug the other still had.
 
 // Where the master index is, and how long it is, per delvmod's
 // archive.load_header/load_index: an (offset,length) pair at 0x80, and the

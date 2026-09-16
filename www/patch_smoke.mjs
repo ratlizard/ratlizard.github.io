@@ -90,6 +90,7 @@ else {
   const describe = u8 => { ctx.__b = u8; return vm.runInContext('describeDelverArchive(__b).ok', ctx); };
 
   const hqx = join(addonDir, '614_MagpiePumpkinPatch.sit.hqx');
+  let opened = null;
   if (!existsSync(hqx)) console.log('  skip  the Pumpkin Patch is not in the add-ons');
   else {
     // The published file: BinHex around StuffIt around the patch, with a
@@ -104,15 +105,22 @@ else {
       fail('the published .hqx', `it opened as ${JSON.stringify(got.name)}, not the patch`);
     else if (!describe(got.bytes))
       fail('the published .hqx', `${JSON.stringify(got.name)} came out, but it is not a Delver Archive`);
-    else ok('the published .hqx opens to the patch inside', `${got.name}, ${got.bytes.length.toLocaleString()} B`);
+    else { ok('the published .hqx opens to the patch inside', `${got.name}, ${got.bytes.length.toLocaleString()} B`); opened = got.bytes; }
   }
 
-  // The bare patch, if a previous run of grimoire's check left one unpacked.
+  // The bare patch. It used to come only from a file left in TMPDIR by a run
+  // of grimoire's check, and two things were wrong with that. macOS purges
+  // TMPDIR by deleting the files and keeping the directories, so the file goes
+  // and everything below here skips -- which prints and reads as a pass. And
+  // it made this repository's check depend on another repository's having been
+  // run, which stopped being true when grimoire's check stopped leaving one.
+  // The patch is inside the .hqx above and this page can open it now, so that
+  // is where it comes from; the unpacked file is still taken when it is there.
   const unpacked = join(process.env.TMPDIR || '/tmp', 'cythera_patch_check', 'pumpkin', 'Patches', 'Pumpkin Patch');
-  if (!existsSync(unpacked) || !existsSync(dataPath)) {
-    console.log('  skip  no unpacked patch and archive to merge (run grimoire\'s patch_check.mjs first)');
+  const patch = opened || (existsSync(unpacked) ? new Uint8Array(readFileSync(unpacked)) : null);
+  if (!patch) {
+    console.log('  skip  no patch to wrap: neither the published .hqx nor an unpacked copy is here');
   } else {
-    const patch = new Uint8Array(readFileSync(unpacked));
     const bare = unwrap('Pumpkin Patch', patch);
     if (bare.bytes.length !== patch.length) fail('the bare patch', 'it was unwrapped as something');
     else ok('the bare patch passes through untouched', bare.bytes.length.toLocaleString() + ' B');
@@ -133,6 +141,10 @@ else {
       fail('a MacBinary patch', `got ${JSON.stringify(un.name)} of ${un.bytes.length} bytes`);
     else ok('a MacBinary wrapper is unwrapped', `${un.name}, ${un.bytes.length.toLocaleString()} B`);
 
+    if (!existsSync(dataPath))
+      console.log(`  skip  no Cythera Data at ${dataPath} to merge into (pass one as the first argument)`);
+  }
+  if (patch && existsSync(dataPath)) {
     ctx.__base = new Uint8Array(readFileSync(dataPath));
     ctx.__patch = patch;
     const m = vm.runInContext('(() => { const m = mergeDelverPatch(__base, __patch); return {r: m.replaced.length, s: m.skipped.length, n: m.bytes.length}; })()', ctx);

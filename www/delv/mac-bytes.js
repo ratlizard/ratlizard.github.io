@@ -1,6 +1,6 @@
 /* mac-bytes.js — reading classic Mac bytes.
  *
- * Shared by cythera_data_viewer.html and resource_fork_browser.html. Both had
+ * Shared by index.html and the retired resource fork browser page. Both had
  * their own copy of every function here, and the Mac Roman table existed three
  * times in two files.
  *
