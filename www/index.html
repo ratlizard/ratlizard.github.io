@@ -237,21 +237,22 @@ const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffe
 // than a desktop and growing a WebAssembly memory on one is not free, so if a
 // long frame lines up with a jump here that is the thing to chase.
 let heapSeen = 0;
-// A load grew the module's heap from 282 MB to 318 MB on the maintainer's
-// phone, and the frame it happened in took 34,642 ms for one 150,000
-// instruction slice -- 28 instructions a millisecond where this call measures
-// 54,000 a millisecond on a desktop. Growing is the suspect and this is the
-// experiment: reserve the headroom here, before play, and say how long it
-// took. If growing 64 MB costs tens of seconds then growth is the cost and
-// this has also moved it out of the game; if it is instant then growth is
-// innocent and the 150,000 instructions themselves are where to look next.
-function reserveHeap(mb) {
-  if (!mem || typeof mem.grow !== 'function') return;
-  const pages = Math.round(mb * 1048576 / 65536), t = performance.now();
-  try { mem.grow(pages); }
-  catch (e) { say(`memory: could not reserve ${mb} MB more (${e.message || e})`); return; }
-  say(`memory: reserved ${mb} MB more in ${(performance.now() - t).toFixed(0)} ms`);
-}
+// There was a `reserveHeap(64)` here, and it is worth saying why it is gone
+// rather than leaving the hole for someone to fill again. It was an
+// experiment: a load had grown the heap 36 MB inside a 34,642 ms frame on the
+// maintainer's phone, so the page grew the memory itself before play to find
+// out whether growing was the cost. It is not -- the reservation took 0 ms --
+// and the freeze turned out to be the fork's tune renderer, since fixed and
+// confirmed gone on the device.
+//
+// So the experiment was answered twice over and the reservation was left
+// standing. It was never going to help in any case: `memory.grow` called from
+// here adds pages the module's own allocator knows nothing about, so it grows
+// again for itself. What it did do is cost 64 MB that nothing ever used --
+// measured in this browser, same source, same twenty seconds of play: 299 MB
+// with it and 235 MB without, at the same guest tick. On a phone, where the
+// tab is killed for memory rather than slowed by it, that is the whole reason
+// to take it out.
 function noteHeap() {
   const mb = mem.buffer.byteLength >> 20;
   if (mb === heapSeen) return mb;
@@ -436,8 +437,6 @@ async function bootOnce() {
   canvas.width = W; canvas.height = H;
   say(`booted in ${(performance.now() - t0).toFixed(0)} ms, screen ${W}x${H}, ${wasm.cw_instructions_per_tick()} instructions/tick, ${restored} save file(s) restored` + (tunes ? `, ${tunes} substitute tune(s) installed` : '') + (patched ? `, ${patched} patch(es) applied` : ''));
   statEl.textContent = '';
-  noteHeap();
-  reserveHeap(64);
   noteHeap();
   booted = true;
 }
