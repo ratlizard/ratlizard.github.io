@@ -12,7 +12,16 @@
      page unscrollable also keeps the toolbars up, so `dvh` stays put. */
   html, body { margin: 0; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; height: 100%; overscroll-behavior: none; }
   body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-  #bar { padding: 6px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 0 0 auto; }
+  /* `viewport-fit=cover` gives the page the whole screen, the parts under the
+     phone's own furniture among it: in landscape an iPhone's camera housing
+     covers about 59 px down one side, and the home indicator a strip along
+     the bottom. Only the pads knew about the bottom one and nothing knew
+     about the sides, so the first control in the bar, one of the two pads and
+     the leftmost column of the game itself sat under the housing whenever the
+     phone was turned. Every edge that touches the screen now adds the inset
+     for its side; on a phone with nothing in the way each `env()` is 0. */
+  #bar { padding: calc(6px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 6px calc(10px + env(safe-area-inset-left));
+         display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 0 0 auto; }
   /* The bar's controls were browser-default buttons on a dark ground, which
      read as an unfinished page rather than a quiet one. These are the same
      controls, given the page's own colours. */
@@ -33,7 +42,7 @@
      a 720 px screen away from the game. One row that scrolls sideways
      instead: nothing is lost and the game keeps the height. */
   @media (max-width: 700px) {
-    #bar { gap: 6px; padding: 6px 8px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    #bar { gap: 6px; padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 6px calc(8px + env(safe-area-inset-left)); flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
     #bar::-webkit-scrollbar { display: none; }
     #bar button, #bar .linkbtn, #bar label, #bar #stat { flex: 0 0 auto; white-space: nowrap; }
     #bar button, #bar .linkbtn { padding: 5px 9px; }
@@ -41,7 +50,8 @@
   /* The stage is whatever height is left, and the canvas is the stage. The
      drawn picture is centred and letterboxed by object-fit, which is what
      guestPoint's mapping already assumes. */
-  #stage { flex: 1 1 auto; min-height: 0; }
+  #stage { flex: 1 1 auto; min-height: 0; box-sizing: border-box;
+           padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   /* A drag out of the game's inventory bar is a press, a move and a release,
      and iOS will take that gesture away as a text selection or a callout
      unless it is told not to -- the pointer stream is cancelled part way and
@@ -51,11 +61,12 @@
            user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   #log { white-space: pre-wrap; font: 11px/1.3 ui-monospace, monospace; padding: 4px 10px; max-height: 30vh; max-height: 30dvh; overflow: auto; flex: 0 1 auto; user-select: text; -webkit-user-select: text; }
   body.playing #log { display: none; }
-  body.showlog #log { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; max-height: 40dvh; background: rgba(0,0,0,.85); z-index: 6; }
+  body.showlog #log { display: block !important; position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; max-height: 40dvh; background: rgba(0,0,0,.85); z-index: 6;
+    padding: 4px calc(10px + env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
   /* Copy sits on the log itself rather than in the bar, which on a phone is
      already a row you have to swipe. */
   #logcopy { display: none; }
-  body.showlog #logcopy { display: block; position: fixed; right: 10px; bottom: calc(40dvh + 10px); z-index: 7;
+  body.showlog #logcopy { display: block; position: fixed; right: calc(10px + env(safe-area-inset-right)); bottom: calc(40dvh + 10px); z-index: 7;
     font: inherit; color: #ddd; background: #232323; border: 1px solid #3a3a3a; border-radius: 7px; padding: 5px 11px; -webkit-appearance: none; appearance: none; }
   #stage { position: relative; }
   /* The touch shell: shown only where the pointer is a finger. Two pads over
@@ -73,13 +84,29 @@
   .k:active, .k.held { background: rgba(255,220,120,.6); color: #000; }
   .k small { display: block; font-weight: 400; font-size: 10px; color: #bbb; margin-top: 2px; }
   .k.held small, .k:active small { color: #333; }
-  #move { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
-  #act { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
+  #move { left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); }
+  #act { right: calc(8px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)); }
   #kb { position: absolute; left: -1000px; top: 0; width: 10px; height: 10px; opacity: 0; }
   body.touch .desktop-only { display: none; }
-  #cheatpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(720px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
+  /* The panels all sit under the bar and are scrolled if they are taller than
+     what is left. Three things were wrong with that on a phone. `width` and
+     `max-height` are the content box unless told otherwise, so a panel asking
+     for 96vw came to 399 px on a 393 px screen and one asking for the window
+     less 60 px ended 10 px below the bottom of it -- the 10 px padding and the
+     border either side, both times. The 48 px top was a guess at the bar's
+     height, which is the guess the canvas made in 40 px and was wrong about by
+     36 on a phone, so the bar is measured instead (`--bar`). And a panel
+     centred on the window is not centred on what the window shows: in
+     landscape the camera housing takes a strip down one side. */
+  .panel { position: fixed; z-index: 5; box-sizing: border-box; overflow: auto;
+    top: calc(var(--bar, 41px) + 7px);
+    left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right)); margin-inline: auto;
+    max-height: calc(100vh - var(--bar, 41px) - 19px - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - var(--bar, 41px) - 19px - env(safe-area-inset-bottom));
+    background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; }
+  #menupanel, #cheatpanel { width: min(720px, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
+  #savespanel, #musicpanel, #patchpanel { width: min(640px, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
   #cheatpanel .row { margin: 6px 0; } #cheatkeys .k { height: auto; padding: 8px 6px; flex-direction: column; font-size: 13px; }
-  #menupanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(720px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #menupanel .row { margin: 6px 0; } .dim { color: #999; font-size: 12px; }
   #menus { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
   .menu { min-width: 150px; background: #262626; border-radius: 8px; padding: 6px; }
@@ -88,9 +115,7 @@
   .menu button:disabled { opacity: .45; }
   .menu hr { border: 0; border-top: 1px solid #444; margin: 4px 0; }
   .menu .key { float: right; color: #999; }
-  #savespanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #savespanel .row { margin: 6px 0; }
-  #musicpanel, #patchpanel { position: fixed; left: 50%; top: 48px; transform: translateX(-50%); width: min(640px, 96vw); max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px); overflow: auto; background: #1c1c1c; border: 1px solid #444; border-radius: 10px; padding: 10px; z-index: 5; }
   #musicpanel .linkbtn { font: inherit; color: #ddd; background: #232323; border: 1px solid #3a3a3a; border-radius: 7px; padding: 5px 11px; text-decoration: none; display: inline-block; line-height: 1.3; }
   #musicpanel .linkbtn:hover { background: #2d2d2d; border-color: #4c4c4c; }
   #musicpanel .linkbtn[aria-disabled="true"] { opacity: .38; pointer-events: none; }
@@ -98,7 +123,7 @@
   #savestable { width: 100%; border-collapse: collapse; font-size: 12px; }
   #savestable td, #savestable th { padding: 4px 6px; border-top: 1px solid #333; text-align: left; }
   #savestable button { font: inherit; }
-  #armed { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: rgba(255,220,120,.85); color: #000; font: 600 12px/1 system-ui, sans-serif; display: none; pointer-events: none; }
+  #armed { position: fixed; top: calc(var(--bar, 41px) + 3px); left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: rgba(255,220,120,.85); color: #000; font: 600 12px/1 system-ui, sans-serif; display: none; pointer-events: none; }
 </style>
 <div id="bar">
   <button id="play" disabled>Play</button>
@@ -113,11 +138,11 @@
   <a id="grimoirelink" class="linkbtn" href="https://ratlizard.github.io/grimoire/" title="Cythera's data" target="_blank" rel="noopener">Grimoire</a>
   <span id="stat">loading module…</span>
 </div>
-<div id="menupanel" hidden>
+<div id="menupanel" class="panel" hidden>
   <div class="row"><b>Menus</b> <span class="dim">the game's own menu bar, which a finger cannot reach at the top of the screen</span> <button id="menuclose">Close</button></div>
   <div id="menus"></div>
 </div>
-<div id="cheatpanel" hidden>
+<div id="cheatpanel" class="panel" hidden>
   <div class="row"><b>Cheats</b> <span class="dim">the game's own cheat mode, read out of its executable</span> <button id="cheatclose">Close</button></div>
   <div class="row" id="cheatstatus"></div>
   <div class="row"><button id="cheatenable">Enable cheat mode in the preferences and reload</button> <span class="dim">sets bit 0 of the fourth byte of UI Prefs, which nothing in the game sets; the game reads it at launch</span></div>
@@ -125,7 +150,7 @@
   <div class="row"><b>Cheat keys</b> <span class="dim">each is option plus a letter; the ones that ask a number read it from what you type next (Type button), in hex unless said</span></div>
   <div id="cheatkeys" class="grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));"></div>
 </div>
-<div id="savespanel" hidden>
+<div id="savespanel" class="panel" hidden>
   <div class="row"><b>Saves</b> <span id="savesnote"></span> <button id="savesclose">Close</button></div>
   <div class="row">Stored in this browser for this copy of the game, and written back to the game's disk when the page opens. <label><input type="checkbox" id="showall"> show the auto-save and settings</label></div>
   <div class="row"><label><button id="importbtn">Import a character (.bin)</button><input type="file" id="importfile" accept=".bin,application/x-macbinary,application/octet-stream" hidden></label></div>
@@ -152,7 +177,7 @@
   </div>
 </div>
 <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Type into the game">
-<div id="musicpanel" hidden>
+<div id="musicpanel" class="panel" hidden>
   <div class="row"><b>Music</b> <span id="musicnote" class="dim"></span> <button id="musicclose">Close</button></div>
   <div class="row dim">Give it a zip, or files. Anything named <code>1A2B3C4D.mid</code> for the tune it replaces is taken at its word; anything else is put in track order and the first eleven become the game's eleven tunes. MIDI plays on the built-in instruments; recordings in any format this browser can decode are played as they are. The game still chooses which tune plays, when it starts and how loud it is. A tune already playing changes when it next starts.</div>
   <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav" multiple hidden></label></div>
@@ -162,7 +187,7 @@
   <div class="row"><button id="musicclear">Remove all, and play the game's own music</button></div>
   <div class="row"><table id="musictable"></table></div>
 </div>
-<div id="patchpanel" hidden>
+<div id="patchpanel" class="panel" hidden>
   <div class="row"><b>Patches</b> <span id="patchnote" class="dim"></span> <button id="patchclose">Close</button></div>
   <div class="row dim">A <b>Magpie patch</b> is the one add-on Cythera has: a file holding replacement art and text, merged into the game's data before it boots. The only one published is the Pumpkin Patch, which puts jack-o’-lanterns and autumn trees in the world. Nothing is written to your copy of the game — the merge happens here, each time the page loads.</div>
   <div class="row"><label><button id="patchfilebtn">Choose a patch file</button><input type="file" id="patchfile" hidden></label></div>
@@ -296,7 +321,24 @@ function fitToViewport() {
   const css = document.body.getBoundingClientRect().height || Infinity;
   const h = Math.min(css, window.innerHeight || Infinity);
   if (h > 0 && h < Infinity) document.body.style.height = h + 'px';
+  noteBarHeight();
+  clampPads();
 }
+// The panels hang off the bottom of the bar, and the bar's height is the
+// stylesheet's business rather than a number they can be told: one row that
+// scrolls on a phone, two or more where it wraps. They read it as `--bar`,
+// for the same reason `chooseScreen` measures rather than guesses.
+function noteBarHeight() {
+  document.documentElement.style.setProperty('--bar',
+    document.getElementById('bar').getBoundingClientRect().height + 'px');
+}
+// And it changes for reasons no resize fires for: the status text goes when
+// the module has loaded, Play becomes Restart, the controls wrap on a window
+// between the phone's width and the row's. Measured once at parse, above, and
+// again whenever the box itself moves -- which is what put the panels 37 px
+// below the bar on a wide window, where they were still placed for the two
+// rows the bar had while it said "loading module...".
+if (window.ResizeObserver) new ResizeObserver(noteBarHeight).observe(document.getElementById('bar'));
 fitToViewport();
 window.addEventListener('resize', fitToViewport);
 window.addEventListener('orientationchange', () => setTimeout(fitToViewport, 120));
@@ -308,15 +350,21 @@ const MAC_EPOCH_OFFSET = 2082844800;
 // canvas then covers the stage at the device's aspect. ?w=&h= overrides.
 // The space is measured rather than guessed at: the page is a column of the
 // bar and the stage, so what the game gets is the page's height less the
-// bar's, and a guest screen of that aspect is drawn with no letterbox and
-// nothing cut off. Subtracting a nominal 40 px bar instead -- which this did
-// -- was wrong by however much the bar's real height differed, and on a
-// phone the bar was 76. The log is not measured because play hides it.
+// bar's, less whatever padding the stage holds off its edges for the camera
+// housing and the home indicator. Subtracting a nominal 40 px bar instead --
+// which this did -- was wrong by however much the bar's real height differed,
+// and on a phone the bar was 76. The log is NOT measured, because play hides
+// it: taking the stage's own box instead of this arithmetic looks tidier and
+// is wrong, since at boot the log is still showing and the game is then laid
+// out for a stage 79 px shorter than the one it ends up in.
 function chooseScreen() {
   const q = new URLSearchParams(location.search);
   if (q.get('w') && q.get('h')) return [Math.max(640, +q.get('w')), Math.max(480, +q.get('h'))];
   const body = document.body.getBoundingClientRect(), bar = document.getElementById('bar').getBoundingClientRect();
-  const vw = Math.max(1, Math.round(body.width)), vh = Math.max(1, Math.round(body.height - bar.height));
+  const stage = document.getElementById('stage');
+  const insetX = stage.offsetWidth - stage.clientWidth, insetY = stage.offsetHeight - stage.clientHeight;
+  const vw = Math.max(1, Math.round(body.width - insetX));
+  const vh = Math.max(1, Math.round(body.height - bar.height - insetY));
   if (vh >= vw) return [640, Math.min(2048, Math.max(480, Math.round(640 * vh / vw)))];
   return [Math.min(2048, Math.max(640, Math.round(480 * vw / vh))), 480];
 }
@@ -1408,6 +1456,7 @@ function becomeRestart() {
 }
 document.getElementById('play').onclick = () => { unlockAudio(); return boot().then(fastForward).then(() => {
   mode = 'play'; document.body.classList.add('playing');
+  clampPads();  // the pads were hidden until now, so this is the first chance to
   becomeRestart();
   // The boot ran headless; drop the audio it synthesised for those ticks.
   wasm.cw_audio_drain();
@@ -1677,13 +1726,41 @@ for (const el of document.querySelectorAll('#hud .k[data-key]')) {
   el.addEventListener('pointercancel', up);
   el.addEventListener('lostpointercapture', up);
 }
-// Pads move by their title, and remember where they were put.
+// Pads move by their title, and remember where they were put. A pad is
+// dragged by its own title, so a pad that has left the window cannot be
+// reached to bring back -- and a place that was on the screen in portrait is
+// off it in landscape, which the phone can do by being turned. So a position
+// that came out of storage or out of a drag is held inside the window, and
+// held again whenever the window changes. A pad still sitting where the
+// stylesheet put it is left alone, so that it keeps the stylesheet's rule,
+// the safe-area inset among it. These are declarations rather than closures
+// because `fitToViewport` calls the first of them while the page is still
+// being parsed.
+function placePad(pad, x, y) {
+  pad.style.left = Math.round(x) + 'px'; pad.style.top = Math.round(y) + 'px';
+  pad.style.right = 'auto'; pad.style.bottom = 'auto'; pad.dataset.placed = '1';
+}
+function clampPads() {
+  for (const pad of document.querySelectorAll('.pad[data-placed]')) {
+    const r = pad.getBoundingClientRect();
+    if (!r.width || !r.height) continue;  // the touch shell is hidden; nothing to hold
+    const x = Math.min(Math.max(r.left, 0), Math.max(0, window.innerWidth - r.width));
+    const y = Math.min(Math.max(r.top, 0), Math.max(0, window.innerHeight - r.height));
+    if (Math.abs(x - r.left) > 0.5 || Math.abs(y - r.top) > 0.5) placePad(pad, x, y);
+  }
+}
+function rememberPad(pad) {
+  try { localStorage.setItem('pad:' + pad.id, JSON.stringify({ left: pad.style.left, top: pad.style.top })); } catch (e) {}
+}
 for (const pad of document.querySelectorAll('.pad')) {
   const title = pad.querySelector('.title'); let drag = null;
-  try { const saved = JSON.parse(localStorage.getItem('pad:' + pad.id) || 'null'); if (saved) { pad.style.left = saved.left; pad.style.top = saved.top; pad.style.right = 'auto'; pad.style.bottom = 'auto'; } } catch (e) {}
+  try {
+    const saved = JSON.parse(localStorage.getItem('pad:' + pad.id) || 'null');
+    if (saved) placePad(pad, parseFloat(saved.left) || 0, parseFloat(saved.top) || 0);
+  } catch (e) {}
   title.addEventListener('pointerdown', e => { e.preventDefault(); title.setPointerCapture(e.pointerId); const r = pad.getBoundingClientRect(); drag = { dx: e.clientX - r.left, dy: e.clientY - r.top }; });
-  title.addEventListener('pointermove', e => { if (!drag) return; pad.style.left = (e.clientX - drag.dx) + 'px'; pad.style.top = (e.clientY - drag.dy) + 'px'; pad.style.right = 'auto'; pad.style.bottom = 'auto'; });
-  const end = () => { if (!drag) return; drag = null; try { localStorage.setItem('pad:' + pad.id, JSON.stringify({ left: pad.style.left, top: pad.style.top })); } catch (e) {} };
+  title.addEventListener('pointermove', e => { if (!drag) return; placePad(pad, e.clientX - drag.dx, e.clientY - drag.dy); });
+  const end = () => { if (!drag) return; drag = null; clampPads(); rememberPad(pad); };
   title.addEventListener('pointerup', end); title.addEventListener('pointercancel', end);
 }
 

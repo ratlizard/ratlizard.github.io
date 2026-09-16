@@ -6,12 +6,12 @@ import { readFileSync } from 'node:fs';
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
 const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 const ids = [...html.matchAll(/ id="([^"]+)"/g)].map(m => m[1]);
-const el = id => ({ id, style: {}, dataset: {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+const el = id => ({ id, style: { setProperty() {}, removeProperty() {} }, dataset: {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
   addEventListener() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0, width: 640, height: 480 }; },
   setAttribute() {}, removeAttribute() {}, getAttribute() { return null; }, hasAttribute() { return false; },
   getContext() { return { putImageData() {}, clearRect() {} }; }, querySelector() { return el('q'); }, querySelectorAll() { return []; },
   appendChild() {}, focus() {}, blur() {}, click() {}, set textContent(v) {}, set innerHTML(v) {}, hidden: true, disabled: false, value: '', checked: false, files: [] });
-const document = { getElementById: id => { if (!ids.includes(id)) throw new Error(`no element #${id}`); return el(id); }, querySelectorAll: () => [], addEventListener() {}, createElement: () => el('new'), body: el('body'), activeElement: null, hidden: false };
+const document = { getElementById: id => { if (!ids.includes(id)) throw new Error(`no element #${id}`); return el(id); }, querySelectorAll: () => [], addEventListener() {}, createElement: () => el('new'), body: el('body'), documentElement: el('html'), activeElement: null, hidden: false };
 const window = { addEventListener() {}, innerWidth: 393, innerHeight: 700, AudioContext: function () {} };
 const stubs = { document, window, matchMedia: () => ({ matches: true }), localStorage: { getItem: () => null, setItem() {} }, navigator: { storage: {} },
   location: { search: '' }, requestAnimationFrame() {}, setInterval() {}, setTimeout: () => 0, clearTimeout() {}, performance: { now: () => 0 },
