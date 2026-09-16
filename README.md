@@ -7,7 +7,9 @@ below that date is alchemy's.
 
 `cythera-web/` is a C-ABI WebAssembly binding over `../../wolflizard` (the
 fork, checked out beside this repository); `www/index.html` is the page that
-runs it. `build.sh` builds the module locally and its comments record the two
+runs it. The page fetches Cythera 1.0.4 from archive.org's Tucows mirror at run
+time; `www/index.html`'s `GAME_SOURCES` says why that one and not the larger
+bundle beside it. `build.sh` builds the module locally and its comments record the two
 toolchain facts that cost a build each. The Pages workflow builds from the
 fork's `cythera-detailed` branch and deploys `www/` to Pages through the
 Actions source, so the built module never enters git.

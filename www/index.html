@@ -285,19 +285,41 @@ async function loadWasm() {
   for (const id of ['play', 'saves', 'bench', 'menubtn', 'cheatbtn', 'musicbtn', 'patchbtn']) document.getElementById(id).disabled = false;
 }
 const wasmReady = loadWasm().catch(e => { say('module failed to load: ' + e); statEl.textContent = 'module failed to load'; throw e; });
+// Saves, substitute music and patches are filed under the game they belong
+// to, and that has to outlive a change of where the game is fetched from: a
+// character must not vanish from the Saves panel because the page started
+// downloading a different copy of Cythera. Both archive.org sources below are
+// Cythera and a character moves between its point releases either way (the
+// Cythera Guides board, on 1.0.2 and 1.0.4: "I could use my 1.0.2 character in
+// the 1.0.4 version and vica versa"), so they share one store -- and the id is
+// the one the bundle derived from its URL, because that is what is already in
+// the browser of anyone who has played.
+const ARCHIVE_STORE = 'archive.org_cors_cythera-installers_Cythera_20installers.sit';
 // The game is not in this repository. A game.sit served beside the page wins
 // (a local checkout with a symlink to the installed-folder archive); otherwise
-// archive.org's "Cythera installers" item, the 28 MB StuffIt archive holding
-// the 1.0.1-1.0.4 installers, through the /cors/ path that sends the CORS
-// header. systemless expands the 1.0.4 Installer VISE payload itself.
+// archive.org, through the /cors/ path that sends the CORS header.
+//
+// **The order of these two matters and it is not about size.** The 28 MB
+// four-in-one bundle holds the 1.0.1, 1.0.2, 1.0.3 and 1.0.4 installers, and
+// the loader takes the first VISE payload it finds, which is 1.0.1 -- so the
+// page served Cythera 1.0.1 for as long as that was the only source, while
+// every measurement this project has taken is against 1.0.4. 1.0.1 is also a
+// version the Cythera Guides board names for the NPCs-following bug, and a
+// character created under an old version carries its quest faults forward.
+// Tucows' mirror is the 1.0.4 installer on its own, a quarter of the size,
+// and the Cythera Data it expands to is byte for byte the one the installed
+// folder holds. Its data forks are stored rather than compressed, which is
+// what lets the module's own StuffIt reader expand it; the standalone 1.0.1
+// and 1.0.2 archives are method 13 and would not work here.
 const GAME_SOURCES = [
-  'game.sit',
-  'https://archive.org/cors/cythera-installers/Cythera%20installers.sit',
+  { url: 'game.sit' },
+  { url: 'https://archive.org/cors/tucows_205568_Cythera/cythera.sit', store: ARCHIVE_STORE },
+  { url: 'https://archive.org/cors/cythera-installers/Cythera%20installers.sit', store: ARCHIVE_STORE },
 ];
 let gameBytes = null, gameId = null;
 async function getGame() {
   if (gameBytes) return gameBytes;
-  for (const url of GAME_SOURCES) {
+  for (const { url, store } of GAME_SOURCES) {
     const t0 = performance.now();
     let res;
     try { res = await fetch(url); } catch (e) { say(`${url}: ${e.message}`); continue; }
@@ -310,7 +332,7 @@ async function getGame() {
       continue;
     }
     gameBytes = new Uint8Array(await res.arrayBuffer());
-    gameId = url.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9._-]+/g, '_');
+    gameId = store || url.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9._-]+/g, '_');
     say(`game fetched from ${url}: ${gameBytes.length} bytes in ${(performance.now() - t0).toFixed(0)} ms`);
     return gameBytes;
   }

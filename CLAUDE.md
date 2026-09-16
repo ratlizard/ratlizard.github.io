@@ -16,6 +16,18 @@ alchemy's and the early commit messages say "web:".
 the installer from archive.org when it opens, or takes a `game.sit` served
 beside it.
 
+**Which installer matters.** The page took archive.org's four-in-one bundle
+until 16 September 2026, and the loader takes the first VISE payload it finds
+in an archive — which in that bundle is **Cythera 1.0.1**, not the 1.0.4 this
+project measures everything against. Tucows' mirror
+(`tucows_205568_Cythera/cythera.sit`) is the 1.0.4 installer on its own: a
+quarter of the size, and its `Cythera Data` is byte for byte the installed
+folder's. It works where the standalone 1.0.1 and 1.0.2 archives do not,
+because its data forks are stored rather than StuffIt method 13, and the
+module's own reader handles stored forks only. The bundle is kept as a
+fallback, and both share one IndexedDB store so a character does not vanish
+from the Saves panel when the source changes.
+
 ## The repositories
 
 The work is split across several, checked out flat beside each other. A
