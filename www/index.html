@@ -81,9 +81,24 @@
   #move .grid { grid-template-columns: repeat(3, 52px); }
   #act .grid { grid-template-columns: repeat(3, 58px); }
   .k { height: 46px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255,255,255,.14); color: #eee; font: 600 14px/1 system-ui, sans-serif; text-align: center; }
+  /* A key with a word under it -- Type/keyboard, the pass key's hourglass over
+     "pass" -- laid both parts out on one line, because `.k` is a flex row and
+     only the Cheats panel's copy of the class ever turned it into a column.
+     `Type keyboard` wanted 78 px of a 58 px cell and spilled out of both sides
+     of it, over Return. Those two stack, which is what `.k small` was written
+     for; the rest stay rows, because a flex container makes every child an
+     item and a column would put the bolded first letter on its own line. */
+  .k.stacked { flex-direction: column; }
   .k:active, .k.held { background: rgba(255,220,120,.6); color: #000; }
   .k small { display: block; font-weight: 400; font-size: 10px; color: #bbb; margin-top: 2px; }
   .k.held small, .k:active small { color: #333; }
+  /* Each command is one of the game's own letter keys, and the key is the
+     word's first letter every time. It was spelled out under the word --
+     "Get G", "Move M cancels" -- which said the same thing twice and ran
+     "Move M cancels" across the edge of the pad. The letter is the word's
+     own first letter now, weighted and brightened; the cell is one word. */
+  .k b { font-weight: 800; color: #fff; }
+  .k.held b, .k:active b { color: #000; }
   #move { left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); }
   #act { right: calc(8px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)); }
   #kb { position: absolute; left: -1000px; top: 0; width: 10px; height: 10px; opacity: 0; }
@@ -163,16 +178,16 @@
     <div class="title">MOVE</div>
     <div class="grid">
       <div class="k" data-key="Numpad7">&#8598;</div><div class="k" data-key="Numpad8">&#8593;</div><div class="k" data-key="Numpad9">&#8599;</div>
-      <div class="k" data-key="Numpad4">&#8592;</div><div class="k" data-key="Space">&#9203;<small>pass</small></div><div class="k" data-key="Numpad6">&#8594;</div>
+      <div class="k" data-key="Numpad4">&#8592;</div><div class="k stacked" data-key="Space">&#9203;<small>pass</small></div><div class="k" data-key="Numpad6">&#8594;</div>
       <div class="k" data-key="Numpad1">&#8601;</div><div class="k" data-key="Numpad2">&#8595;</div><div class="k" data-key="Numpad3">&#8600;</div>
     </div>
   </div>
   <div class="pad" id="act">
     <div class="title">COMMANDS</div>
     <div class="grid">
-      <div class="k" data-key="KeyG">Get<small>G</small></div><div class="k" data-key="KeyT">Talk<small>T</small></div><div class="k" data-key="KeyL">Look<small>L</small></div>
-      <div class="k" data-key="KeyU">Use<small>U</small></div><div class="k" data-key="KeyA">Attack<small>A</small></div><div class="k" data-key="KeyM">Move<small>M cancels</small></div>
-      <div class="k" data-key="Escape">Esc</div><div class="k" data-key="Enter">Return</div><div class="k" id="kbtoggle">Type<small>keyboard</small></div>
+      <div class="k" data-key="KeyG"><b>G</b>et</div><div class="k" data-key="KeyT"><b>T</b>alk</div><div class="k" data-key="KeyL"><b>L</b>ook</div>
+      <div class="k" data-key="KeyU"><b>U</b>se</div><div class="k" data-key="KeyA"><b>A</b>ttack</div><div class="k" data-key="KeyM"><b>M</b>ove</div>
+      <div class="k" data-key="Escape">Esc</div><div class="k" data-key="Enter">Return</div><div class="k stacked" id="kbtoggle">Type<small>keyboard</small></div>
     </div>
   </div>
 </div>
