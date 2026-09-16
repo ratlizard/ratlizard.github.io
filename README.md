@@ -31,6 +31,7 @@ The Node runners in `www/` drive the same module without a browser:
 | `page_smoke.mjs` | the page's script runs top to bottom under a stub document |
 | `audio_ring_check.mjs` | the audio ring out of the page: a stream fed in pieces comes out with no step anywhere, running dry bends rather than clicks and comes back without one, a ring flooded past its capacity stays bounded and cross-fades where it drops the oldest. Takes no arguments |
 | `patch_smoke.mjs` | the Magpie patch route: the vendored format files, the module's exports, and the real patch through its wrappers |
+| `layout_probe.mjs` | the page at phone sizes in a real browser: the document is exactly the window and does not scroll, and every panel and pad opens inside it under the bar's measured height. Needs Google Chrome and the built module beside the page, and says so rather than passing when either is missing; `--dump` prints the measurements |
 
 Each takes the game archive as its first argument — except
 `audio_ring_check`, which takes none, and `patch_smoke`, whose first argument
