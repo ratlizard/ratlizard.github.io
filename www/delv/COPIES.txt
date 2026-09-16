@@ -5,5 +5,5 @@ version was taken when it is not.
 
 a618319db71418a8f0a9b8cf94c6498748bcd1248ee1151227005fbb02c08767  mac-bytes.js
 81e8fd38d52f84f215ef3ec0690612b4bb7b8f55b53268decd6aee64506354f1  mac-containers.js
-381be66dfb08c411cdbe6c134c66bae54622b0eada77dac12ba81d20f2ded91e  mac-stuffit.js
-89bc2f8f92cff7106b0093901f04baec1a7ebf397c62cc017387b826d76ffdf7  delv-archive.js
+c369eca30d934935f99b568cb6ebb00e9066a78ab7823b61af196f7e407d72ca  mac-stuffit.js
+ccd362889c53c5db8b06c6e47b694ecedb0fb29ff51be6ab146e95d8b1599395  delv-archive.js

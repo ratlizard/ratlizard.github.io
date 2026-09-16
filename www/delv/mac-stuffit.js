@@ -53,6 +53,14 @@ const SIT_METHOD_NAMES = {
   8: 'MW', 13: 'LZ+Huffman', 14: 'Installer', 15: 'Arsenic'
 };
 
+/* StuffIt X, the .sitx format, opens with "StuffIt!". It is a different format
+   from the two above rather than a later version of them, with compressors of
+   its own, and this file reads none of it. Recognised only so that a refusal
+   can say what the file is. */
+function looksLikeStuffItX(bytes) {
+  return !!bytes && bytes.length >= 8 && latin1(bytes.subarray(0, 8)) === 'StuffIt!';
+}
+
 function looksLikeStuffIt(bytes) {
   if (!bytes || bytes.length < 96) return false;
   if (fourcc(bytes, 0) === 'SIT!' && fourcc(bytes, 10) === 'rLau') return true;

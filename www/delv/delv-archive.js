@@ -268,6 +268,45 @@ function extractDelverArchive(bytes, opts) {
   const bare = fromStuffIt(bytes, '');
   if (bare) return bare;
 
+  /* A zip with a Delver archive inside it: one of the add-ons is one, and a
+     saved game shared now arrives as one, since the Finder's Compress and the
+     Files app's both make a zip. Read the same way as a StuffIt archive -- the
+     first entry whose data fork is a Delver archive wins, a fork that will not
+     read is stepped over -- and the resource fork and Finder type come from
+     the AppleDouble a Mac zips beside the file (js/mac-zip.js). Guarded, like
+     the StuffIt path, because the browser player vendors this file without
+     that one. */
+  const fromZip = (buf) => {
+    if (typeof looksLikeZip !== 'function' || !looksLikeZip(buf)) return null;
+    let arc = null;
+    try { arc = parseZipArchive(buf); }
+    catch (e) { notes.push('a zip archive that will not read: ' + e.message); return null; }
+    const where = 'zip archive';
+    const refused = [];
+    for (const e of arc.entries) {
+      if (e.isFolder || !e.len) continue;
+      let data;
+      try { data = zipFork(buf, e, 'data'); }
+      catch (err) { refused.push(err.message); continue; }
+      const d = describeDelverArchive(data);
+      if (!d.ok) { notes.push('"' + e.path + '" in the ' + where + ', ' + d.reason); continue; }
+      const rsrc = zipFork(buf, e, 'rsrc');
+      return { bytes: data, via: where, info: d,
+               forks: { kind: where, name: e.name, type: e.type, creator: e.creator, data, rsrc } };
+    }
+    if (refused.length) notes.push('in the ' + where + ', could not read ' + refused.join(', '));
+    return null;
+  };
+  const zipped = fromZip(bytes);
+  if (zipped) return zipped;
+
+  /* StuffIt X and Compact Pro are the two formats the community's add-ons use
+     that this page does not open. Named, so the refusal says what to do
+     rather than that no title string was found at byte 0. */
+  const UNPACK_IT = ', which this page does not open. Unpack it with The Unarchiver or StuffIt Expander and open the file inside.';
+  const isStuffItX = buf => typeof looksLikeStuffItX === 'function' && looksLikeStuffItX(buf);
+  if (isStuffItX(bytes)) throw new Error('That is a StuffIt X archive (.sitx)' + UNPACK_IT);
+
   // sniffMacContainer knows the order these have to be tried in, and why.
   const forks = sniffMacContainer(bytes);
   const kind = forks ? forks.kind : '';
@@ -291,13 +330,20 @@ function extractDelverArchive(bytes, opts) {
       if (inner) { inner.forks.outer = forks; return inner; }
     }
     const t = (forks.type || '').trim(), c = (forks.creator || '').trim();
-    throw new Error('That is a ' + kind + ' file' + (forks.name ? ' holding "' + forks.name + '"' : '') +
+    const holding = 'That is a ' + kind + ' file' + (forks.name ? ' holding "' + forks.name + '"' : '');
+    if (isStuffItX(forks.data)) throw new Error(holding + ', a StuffIt X archive' + UNPACK_IT);
+    // An application is only the Cythera application when its creator says
+    // so. 'EXTR' is Compact Pro's self-extractor, which is what the one .sea
+    // among the add-ons is.
+    if (t === 'APPL' && c === 'EXTR') throw new Error(holding + ', a Compact Pro self-extracting archive' + UNPACK_IT);
+    throw new Error(holding +
       (t ? " (type '" + t + "', creator '" + c + "')" : '') +
-      (t === 'APPL' ? ' — the Cythera application, not its data.' : '.') +
+      (t === 'APPL' && c === 'Delv' ? ', which is the Cythera application, not its data.' : t === 'APPL' ? ', which is an application, not an archive.' : '.') +
       " The archives this tool reads are “Cythera Data” (type 'DelS', creator 'Delv') and a Cythera saved game (type 'DelP'). [" + notes.join('; ') + ']');
   }
   throw new Error('Not a Delver archive: ' + notes.join('; ') +
-    '. Expected "Cythera Data" itself, a .hqx / MacBinary / AppleSingle wrapper around it, ' +
+    '. Expected "Cythera Data" itself, a .hqx / MacBinary / AppleSingle wrapper around it' +
+    (typeof looksLikeZip === 'function' ? ', a .sit or .zip holding it, ' : ', a .sit holding it, ') +
     'or the Cythera installer (.sit or Cythera.bin).');
 }
 
@@ -994,7 +1040,7 @@ function mergeDelverPatch(baseBytes, patchBytes) {
   const patch = delverArchiveSpec(patchBytes);
   if (!patch) throw new Error('that file is not a Delver Archive, so it is not a Magpie patch');
   if (patch.playerName)
-    throw new Error('that is a saved game (' + patch.playerName + '), not a patch — import it as a character instead');
+    throw new Error('that is a saved game (' + patch.playerName + '), not a patch; import it as a character instead');
   if (patch.scenarioTitle !== base.scenarioTitle)
     throw new Error('that patch is for ' + JSON.stringify(patch.scenarioTitle) +
                     ', and this game is ' + JSON.stringify(base.scenarioTitle));
