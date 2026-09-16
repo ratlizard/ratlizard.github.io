@@ -1218,6 +1218,28 @@ function delverUuidText(bytes, at) {
    nothing else. The sample wins and the discrepancy is recorded rather than
    smoothed over: it means one of the two readings of that routine is wrong,
    and only the offset is affected. */
+/* Is this archive a Magpie patch, decided without decrypting the whole of it?
+   `delverArchiveSpec` walks and decrypts every resource, which on the 5.6 MB
+   scenario is real time to spend on a file that has only just been dropped,
+   and the question here is whether ONE resource is present. The descriptor is
+   0xFFFF, so its subindex and entry are read straight out of the master index
+   and that resource alone is decrypted. Returns what delverPatchDescriptor
+   returns, or null for the scenario, a saved game, or anything else. */
+function delverArchivePatchPeek(bytes) {
+  const mi = delverMasterIndexExtent(bytes);
+  if (!mi) return null;
+  const subn = (DELV_PATCH_DESCRIPTOR >> 8) - 1, n = DELV_PATCH_DESCRIPTOR & 0xFF;
+  if (subn >= mi.count) return null;
+  const p0 = mi.first + subn * 8;
+  const subOff = u32be(bytes, p0), subLen = u32be(bytes, p0 + 4);
+  if (!subOff || subOff + subLen > bytes.length || subLen < (n + 1) * 8) return null;
+  const p = subOff + n * 8;
+  const roff = u32be(bytes, p), rlen = u32be(bytes, p + 4);
+  if (!roff || !rlen || roff + rlen > bytes.length) return null;
+  const dec = smartDecrypt(bytes.slice(roff, roff + rlen), DELV_PATCH_DESCRIPTOR);
+  return delverPatchDescriptor({ resources: [{ resid: DELV_PATCH_DESCRIPTOR, data: dec.data }] });
+}
+
 function delverPatchDescriptor(spec) {
   if (!spec || !spec.resources) return null;
   const r = spec.resources.find(x => x.resid === DELV_PATCH_DESCRIPTOR);
