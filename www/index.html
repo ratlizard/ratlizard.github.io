@@ -191,7 +191,7 @@
   <div class="row"><b>Patches</b> <span id="patchnote" class="dim"></span> <button id="patchclose">Close</button></div>
   <div class="row dim">A <b>Magpie patch</b> is the one add-on Cythera has: a file holding replacement art and text, merged into the game's data before it boots. The only one published is the Pumpkin Patch, which puts jack-o’-lanterns and autumn trees in the world. Nothing is written to your copy of the game — the merge happens here, each time the page loads.</div>
   <div class="row"><label><button id="patchfilebtn">Choose a patch file</button><input type="file" id="patchfile" hidden></label></div>
-  <div class="row dim">Give it the patch itself — the file inside a Magpie download's <code>Patches</code> folder. A <code>.hqx</code> or <code>.bin</code> wrapper around one is unwrapped here; a <code>.sit</code> is not, because its contents are compressed in a format this page does not read, so extract it first.</div>
+  <div class="row dim">Give it the download as it comes — a <code>.hqx</code>, <code>.sit</code> or <code>.bin</code> is opened here, and so is a patch already out of its wrappers. Where a <code>.sit</code> holds several files, the first one in it that is a patch is the one taken.</div>
   <div class="row"><table id="patchtable"></table></div>
 </div>
 <div id="log"></div>
@@ -829,13 +829,30 @@ function unwrapPatch(fileName, u8) {
   let name = fileName, bytes = u8;
   for (let layer = 0; layer < 4; layer++) {
     if (looksLikeStuffIt(bytes)) {
-      let listed = '';
-      try {
-        const names = parseStuffItArchive(bytes).entries.filter(e => !e.isFolder).map(e => e.path);
-        if (names.length) listed = ' It holds ' + names.map(n => '"' + n + '"').join(', ') + '.';
-      } catch (e) {}
-      throw new Error(name + ' is a StuffIt archive, and this page cannot decompress one.' +
-                      listed + ' Extract it and choose the patch file itself.');
+      // The vendored reader decompresses StuffIt's methods 13 and 15 since
+      // 15 and 16 September 2026, and the one published patch is a method-13
+      // fork. Before that this branch refused the download and said to extract
+      // it first, which on a phone is not something that can be done at all.
+      // A .sit holds several files, so the first entry whose data fork reads
+      // as a Delver Archive wins, and one that will not come out is stepped
+      // over rather than thrown on -- a file beside it may still be the patch.
+      let arc;
+      try { arc = parseStuffItArchive(bytes); }
+      catch (e) { throw new Error(name + ' looks like a StuffIt archive and could not be read: ' + e.message); }
+      let found = null; const passed = [], refused = [];
+      for (const e of arc.entries) {
+        if (e.isFolder || !e.dataLen) continue;
+        let data;
+        try { data = stuffItFork(bytes, e, 'data'); }
+        catch (err) { refused.push('"' + e.path + '" (' + err.message + ')'); continue; }
+        if (describeDelverArchive(data).ok) { found = { name: e.name, bytes: data }; break; }
+        passed.push('"' + e.path + '"');
+      }
+      if (!found)
+        throw new Error('Nothing in ' + name + ' is a Delver Archive, so there is no patch in it.' +
+                        (passed.length ? ' It holds ' + passed.join(', ') + '.' : '') +
+                        (refused.length ? ' It could not decompress ' + refused.join(', ') + '.' : ''));
+      name = found.name; bytes = found.bytes; continue;
     }
     if (looksLikeBinHex(bytes)) {
       const f = binhexSplitForks(binhexDecode(bytes));

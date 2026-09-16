@@ -87,19 +87,24 @@ if (!unwrapSrc) fail('unwrapPatch', 'not found in index.html');
 else {
   vm.runInContext(unwrapSrc[0], ctx, { filename: 'unwrapPatch' });
   const unwrap = (name, u8) => { ctx.__n = name; ctx.__b = u8; return vm.runInContext('unwrapPatch(__n, __b)', ctx); };
+  const describe = u8 => { ctx.__b = u8; return vm.runInContext('describeDelverArchive(__b).ok', ctx); };
 
   const hqx = join(addonDir, '614_MagpiePumpkinPatch.sit.hqx');
   if (!existsSync(hqx)) console.log('  skip  the Pumpkin Patch is not in the add-ons');
   else {
-    // The published file: BinHex around StuffIt. It must be refused, and the
-    // message must name the patch inside so a person knows what to extract.
-    let msg = '';
-    try { unwrap('614_MagpiePumpkinPatch.sit.hqx', new Uint8Array(readFileSync(hqx))); }
+    // The published file: BinHex around StuffIt around the patch, with a
+    // method-13 data fork. It is opened rather than refused since the reader
+    // learned method 13, which is the whole point of the section on a phone --
+    // there is no desktop there to extract it on.
+    let got = null, msg = '';
+    try { got = unwrap('614_MagpiePumpkinPatch.sit.hqx', new Uint8Array(readFileSync(hqx))); }
     catch (e) { msg = e.message; }
-    if (!msg) fail('the published .hqx', 'it was accepted, and its payload is a StuffIt archive');
-    else if (!/StuffIt/.test(msg) || !/Pumpkin Patch/.test(msg))
-      fail('the published .hqx', 'the message does not name StuffIt and the patch inside: ' + msg);
-    else ok('the published .hqx is refused, naming what is inside', msg.slice(0, 96));
+    if (!got) fail('the published .hqx', 'it was refused: ' + msg);
+    else if (!/Pumpkin Patch/.test(got.name))
+      fail('the published .hqx', `it opened as ${JSON.stringify(got.name)}, not the patch`);
+    else if (!describe(got.bytes))
+      fail('the published .hqx', `${JSON.stringify(got.name)} came out, but it is not a Delver Archive`);
+    else ok('the published .hqx opens to the patch inside', `${got.name}, ${got.bytes.length.toLocaleString()} B`);
   }
 
   // The bare patch, if a previous run of grimoire's check left one unpacked.

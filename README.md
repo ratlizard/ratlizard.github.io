@@ -32,7 +32,10 @@ The Node runners in `www/` drive the same module without a browser:
 | `audio_ring_check.mjs` | the audio ring out of the page: a stream fed in pieces comes out with no step anywhere, running dry bends rather than clicks and comes back without one, a ring flooded past its capacity stays bounded and cross-fades where it drops the oldest. Takes no arguments |
 | `patch_smoke.mjs` | the Magpie patch route: the vendored format files, the module's exports, and the real patch through its wrappers |
 
-Each takes the game archive as its first argument; `game.sit` beside the page
+Each takes the game archive as its first argument — except
+`audio_ring_check`, which takes none, and `patch_smoke`, whose first argument
+is a `Cythera Data` data fork to merge into and which finds everything else
+for itself. `game.sit` beside the page
 (gitignored) is the usual symlink — `ln -s
 ../../cythera-reference/game/installed-folders/"Cythera Installed Folder.sit"
 www/game.sit`. It does not survive a move of this tree, and without it

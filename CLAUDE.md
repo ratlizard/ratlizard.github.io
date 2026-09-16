@@ -135,10 +135,14 @@ already stored, which is what stops the save scan offering the 5.6 MB archive
 to IndexedDB as if the guest had written it.
 
 The one published patch is the Pumpkin Patch, twelve tile sheets. It is
-distributed as a `.hqx` wrapping a `.sit`, and `js/mac-stuffit.js` lists a
-StuffIt archive but does not decompress one, so the page unwraps BinHex and
-MacBinary and refuses a `.sit` by naming what is inside it. `CW_PATCH=<file>`
-on `drive.mjs` reproduces a patched run without a browser.
+distributed as a `.hqx` wrapping a `.sit`, and the page opens all of it: BinHex
+and MacBinary are unwrapped, and a StuffIt archive is read and the first entry
+in it that is a Delver Archive taken, which is what the patch is. That last
+part only works because grimoire's `js/mac-stuffit.js` learned StuffIt's
+methods 13 and 15 in September 2026 — before that the page refused the
+download and named what to extract, which on a phone cannot be acted on at
+all. `CW_PATCH=<file>` on `drive.mjs` reproduces a patched run without a
+browser.
 
 ## Conventions
 
