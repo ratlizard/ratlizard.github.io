@@ -162,10 +162,18 @@ browser.
 
 ## Conventions
 
-**`cythera-workbench/doc/PLAYER-NEXT.md` beside this file is this repository's handoff** — decisions, open
-questions and what was learned, read in full by a session working here and
-edited only by one. It never carries a tip or a count; the workspace's
-`tools/status.sh` derives those.
+**`cythera-workbench/doc/PLAYER-NEXT.md` beside this file is this repository's handoff** — what is
+open and nothing else, read in full by a session working here and edited only
+by one. Every item in it has a name that does not change, `player/<word>-<six
+characters>`; cite the name rather than a position in the list, and grep the
+six characters to find every mention of it.
+
+**`cythera-workbench/doc/PLAYER-NOTES.md` is the companion log** — the
+decisions, the measurements and what was learned, including everything that
+has been closed. It is consulted, **not** read in full. Split out of the
+handoff on 17 September 2026, when nearly all of a thousand-line handoff had
+become a record of finished work. Neither file carries a tip or a count; the
+workspace's `tools/status.sh` derives those.
 
 **Commit messages are prose**, not conventional-commits: a sentence
 describing the change from the user's side.
