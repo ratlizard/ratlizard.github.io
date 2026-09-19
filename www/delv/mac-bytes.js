@@ -20,6 +20,32 @@
  * utilities/verify_viewer.mjs fails the build if a module script appears.
  */
 
+/* ---- a failure allowed to pass ------------------------------------------ */
+/* Most try blocks on the site guard an optional decode: a resource the file
+ * has not got, a fork that is absent, a picture that will not parse, a
+ * browser without some API. Each used to fall back with an empty catch --
+ * 135 of them on 18 September 2026 -- and nothing anywhere said so: a
+ * visitor got a quieter page and no reason. quiet(e) is what an empty catch
+ * says now. The failure is kept, once per distinct message with a count and
+ * the line it came from, and the Tools sheet lists them (quietFailuresHTML
+ * in js/page-views.js); uncaught errors arrive here too, from the listeners
+ * the page installs at boot. With window.LOUD_QUIET set -- the page's
+ * ?loud=1, which utilities/browser_check.mjs passes -- each is also a
+ * console warning, so a headless load can count them. The harnesses leave
+ * it unset and stay quiet. */
+const QUIET_FAILURES = new Map();
+function quiet(e, what) {
+  const msg = (what ? what + ': ' : '') + (e && e.message ? e.message : String(e));
+  const hit = QUIET_FAILURES.get(msg);
+  if (hit) hit.count++;
+  else if (QUIET_FAILURES.size < 200) {
+    const where = e && e.stack ? String(e.stack).split('\n').find(l => /:\d+/.test(l) && !/quiet/.test(l)) || '' : '';
+    QUIET_FAILURES.set(msg, { count: 1, where: where.trim() });
+  }
+  try { if (window.LOUD_QUIET) console.warn('quietly: ' + msg + (hit ? ' (' + hit.count + ')' : '')); } catch (x) { /* no window */ }
+  return e;
+}
+
 /* ---- big-endian readers ------------------------------------------------ */
 /* Everything in a resource fork, a BinHex header and a Delver archive is
  * big-endian, which is the opposite of what DataView defaults to, so these

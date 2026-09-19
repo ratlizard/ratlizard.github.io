@@ -9,15 +9,19 @@
  * delvmod cross-checks -- the only things here that can tell a wrong decoder
  * from a right one -- had nothing to point at but "the page".
  *
- * WHAT THIS IS NOT. It is not a library, and calling it one would mislead
- * whoever reads it next. `fileBytes` and `masterIndexGlobal` below are the
- * open archive, and getResourceBytes() reads them as ambient globals rather
- * than taking them as arguments; the tables memoised in here are still dropped
- * by resetDerivedCaches() over in the page. A classic script shares one global
- * scope with the document, so extracting these files changed none of that and
- * was not meant to. What it buys is that the domain code can be read on its
- * own and that a harness can name the file it is checking. Threading the
- * archive through as a parameter is a different and much larger job.
+ * THE ARCHIVE IS AN ARGUMENT. openDelverArchive(bytes) returns the open
+ * archive as an object -- its bytes, its master index bounds-checked, and
+ * `derived`, the tables built from it -- and every function in this tier
+ * that reads the archive takes that object as its first argument:
+ * getResourceBytes(arc, resid), decodeResource(arc, ...), dvmRender(arc, ...).
+ * Until 18 September 2026 the two were `fileBytes` and `masterIndexGlobal`,
+ * top-level variables of this file that getResourceBytes read as ambient
+ * globals, and the tables memoised in this tier were module-level Maps that
+ * resetDerivedCaches() in the page had to know about by name; ten of them
+ * were missed at once on 16 September. A table keyed to an archive now lives
+ * on that archive (derivedTable below) and goes when it does, and two
+ * archives can be open at the same time, which the page could not do
+ * before. The page's own open file is `ARCHIVE` in js/page-archive.js.
  *
  * CLASSIC SCRIPT, deliberately -- no `type="module"`, no import, no export.
  * A module is fetched with CORS, and a page opened from file:// has an opaque
@@ -34,8 +38,38 @@
  * run. The comment above smartDecrypt says what guessing them cost.
  */
 
-let fileBytes = null;
-let masterIndexGlobal = null;
+/* The open archive. `bytes` is the whole data fork; `index` has 256 slots
+   whatever the header says, so a subindex number is always its own index
+   here, and every entry is either [0, 0] or a whole number of 8-byte records
+   inside the file -- getResourceBytes, buildXrefIndex, buildScriptTextIndex
+   all see 34 real subindexes and nothing that could point outside the bytes.
+   `derived` holds the tables this tier and the page build from the archive,
+   under derivedTable(); they belong to these bytes and to no others, which
+   is why they are kept here rather than in a variable somewhere. Null when
+   the (offset, length) pair at 0x80 does not describe a master index. */
+function openDelverArchive(bytes) {
+  const mi = delverMasterIndexExtent(bytes);
+  if (!mi) return null;
+  const index = [];
+  for (let i = 0; i < 256; i++) {
+    let off = 0, len = 0;
+    if (i < mi.count) {
+      off = u32be(bytes, mi.first + i * 8); len = u32be(bytes, mi.first + i * 8 + 4);
+      if (!(off >= mi.dataStart && len > 0 && len % 8 === 0 && off + len <= bytes.length)) { off = 0; len = 0; }
+    }
+    index.push([off, len]);
+  }
+  return { bytes, index, derived: new Map() };
+}
+
+/* A table built from an archive, built once per archive: the second call
+   with the same key returns what the first built. With no archive (a harness
+   handing bytes straight to a decoder) the table is built and not kept. */
+function derivedTable(arc, key, build) {
+  if (!arc) return build();
+  if (!arc.derived.has(key)) arc.derived.set(key, build());
+  return arc.derived.get(key);
+}
 function parseDelverStringTable(p) {
   if (!p || p.length < 6) return null;
   const hdr = u16be(p, 0);
@@ -70,25 +104,26 @@ class BinReader {
 // a BinReader per call. It also validates the pair now: slice() clamps, so a
 // corrupt length used to yield a short buffer that looked like a real (but
 // truncated) resource instead of an error.
-function getResourceBytes(resid) {
+function getResourceBytes(arc, resid) {
+  if (!arc) return null;
   const subn = Math.floor(resid / 0x100) - 1;
   const n = resid % 0x100;
-  const mi = masterIndexGlobal && masterIndexGlobal[subn];
+  const mi = arc.index[subn];
   if (!mi || !mi[0]) return null;
   const [subOff, subLen] = mi;
   if (n*8 + 8 > subLen) return null;
-  const p = subOff + n*8;
-  const roff = ((fileBytes[p]*0x1000000) + (fileBytes[p+1]<<16) + (fileBytes[p+2]<<8) + fileBytes[p+3]) >>> 0;
-  const rlen = ((fileBytes[p+4]*0x1000000) + (fileBytes[p+5]<<16) + (fileBytes[p+6]<<8) + fileBytes[p+7]) >>> 0;
-  if (!roff || roff + rlen > fileBytes.length) return null;
-  return fileBytes.slice(roff, roff+rlen);
+  const p = subOff + n*8, bytes = arc.bytes;
+  const roff = ((bytes[p]*0x1000000) + (bytes[p+1]<<16) + (bytes[p+2]<<8) + bytes[p+3]) >>> 0;
+  const rlen = ((bytes[p+4]*0x1000000) + (bytes[p+5]<<16) + (bytes[p+6]<<8) + bytes[p+7]) >>> 0;
+  if (!roff || roff + rlen > bytes.length) return null;
+  return bytes.slice(roff, roff+rlen);
 }
 
 // How many entries a subindex actually declares. The builders below used to
 // ask for all 256 ids in every populated subindex -- 8,704 lookups where 1,600
 // exist -- because the count was never consulted.
-function subindexCount(subn) {
-  const mi = masterIndexGlobal && masterIndexGlobal[subn];
+function subindexCount(arc, subn) {
+  const mi = arc && arc.index[subn];
   return mi && mi[0] ? Math.min(256, Math.floor(mi[1] / 8)) : 0;
 }
 
@@ -783,12 +818,12 @@ function extractCStrings(data, minLen = 3) {
   return entries;
 }
 
-function extractReadableStrings(data, resid) {
+function extractReadableStrings(arc, data, resid) {
   // If the resource is a Delver container, its own structure says where the
   // strings are, and that beats any scan. The byte-level scans below are the
   // fallback for data that is not a container at all.
   if (resid !== undefined) {
-    const owned = dvmStringObjects(data, resid);
+    const owned = dvmStringObjects(arc, data, resid);
     if (owned.length) {
       return owned.map(e =>
         '0x' + e.offset.toString(16).padStart(4, '0') + '  ' + JSON.stringify(e.str)
@@ -1430,11 +1465,10 @@ function describeDelverPatch(baseSpec, patchSpec) {
    writes -- the edits you made are simply the diff between the file as it
    arrived and the file as it stands.
 
-   IT READS NO AMBIENT STATE, which is the whole reason this is possible at
-   all. The save comparison in the handoff is blocked because it needs
-   `getResourceBytes`, which reads the open archive out of `fileBytes` as a
-   global; nothing here does, so two archives can be open at once as data
-   even though they cannot both be the page's "open file".
+   IT READS NO AMBIENT STATE. It takes the two archives as bytes, which is
+   how every reader in this file works since 18 September 2026; before that
+   `getResourceBytes` read the open archive out of a global and this was the
+   one comparison two archives could be given to.
 
    ORDER IS MEANINGFUL: `a` is the older or the original, `b` the newer or the
    edited. Added and removed are named from a's point of view.
