@@ -104,7 +104,9 @@ the page's own script under a stub document (it catches a use-before-declare
 that parsing cannot); `play_smoke` and `bench` pace the guest; `audio_smoke`
 counts non-silent samples; `saves_smoke` drives the store; `menus_smoke`
 selects a guest menu item; `music_smoke` lifts the page's zip reader out of
-`index.html` and runs the whole substitute-music path; `patch_smoke` proves the
+`index.html` and runs the whole substitute-music path; `zip_smoke` runs the
+page's zip reader, save import and patch unwrapping over real zips, Rocky the
+Flying Chicken among them; `patch_smoke` proves the
 Magpie patch route; `load_timing` times a save load call by call;
 `layout_probe` drives the real page in headless Chrome at phone sizes and
 fails if anything is off the screen — every layout fault this page has had was
@@ -151,8 +153,8 @@ already stored, which is what stops the save scan offering the 5.6 MB archive
 to IndexedDB as if the guest had written it.
 
 The one published patch is the Pumpkin Patch, twelve tile sheets. It is
-distributed as a `.hqx` wrapping a `.sit`, and the page opens all of it: BinHex
-and MacBinary are unwrapped, and a StuffIt archive is read and the first entry
+distributed as a `.hqx` wrapping a `.sit`, and the page opens all of it, zipped
+or not: BinHex and MacBinary are unwrapped, and a StuffIt archive is read and the first entry
 in it that is a Delver Archive taken, which is what the patch is. That last
 part only works because grimoire's `js/mac-stuffit.js` learned StuffIt's
 methods 13 and 15 in September 2026 — before that the page refused the
