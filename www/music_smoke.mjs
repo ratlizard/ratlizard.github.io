@@ -10,6 +10,7 @@
 //
 // Usage: node music_smoke.mjs <archive> <FB7C80EC.mid>
 import { readFileSync } from 'node:fs';
+import { crc32 } from 'node:zlib';
 
 const [, , archivePath, midiPath] = process.argv;
 if (!archivePath || !midiPath) {
@@ -30,12 +31,15 @@ const src = page.slice(from, page.indexOf('\n', from)) + '\nconst MUSIC_ANY = ' 
 const tunesFrom = page.indexOf('const GAME_TUNES = [');
 const order = '\n' + page.slice(tunesFrom, page.indexOf('];', tunesFrom) + 2) +
   '\n' + page.slice(page.indexOf('function naturalOrder'), page.indexOf('\n}', page.indexOf('function naturalOrder')) + 2);
+// The reader checks each entry's CRC with grimoire's crc32, which the page
+// loads from delv/mac-bytes.js before its own script.
+const macBytes = readFileSync(new URL('./delv/mac-bytes.js', import.meta.url), 'utf8');
 const dec = new TextDecoder();
 let warnings = 0;
 const say = m => { warnings++; console.log('  page said:', m); };
 const { unzip, MUSIC_NAME, naturalOrder, GAME_TUNES } = await import(
   'data:text/javascript;base64,' +
-  Buffer.from(`export const __f = (dec, say) => { ${src}${order}; return { unzip, MUSIC_NAME, naturalOrder, GAME_TUNES }; };`).toString('base64')
+  Buffer.from(`export const __f = (dec, say) => { ${macBytes}\n${src}${order}; return { unzip, MUSIC_NAME, naturalOrder, GAME_TUNES }; };`).toString('base64')
 ).then(m => m.__f(dec, say));
 
 // A zip with the same file twice: stored, and deflated.
@@ -53,13 +57,13 @@ async function buildZip(entries) {
     const lh = new Uint8Array(30 + nameBytes.length);
     const lv = new DataView(lh.buffer);
     lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint16(8, method, true);
-    lv.setUint32(18, payload.length, true); lv.setUint32(22, bytes.length, true);
+    lv.setUint32(14, crc32(bytes), true); lv.setUint32(18, payload.length, true); lv.setUint32(22, bytes.length, true);
     lv.setUint16(26, nameBytes.length, true);
     lh.set(nameBytes, 30);
     const ch = new Uint8Array(46 + nameBytes.length);
     const cv = new DataView(ch.buffer);
     cv.setUint32(0, 0x02014b50, true); cv.setUint16(10, method, true);
-    cv.setUint32(20, payload.length, true); cv.setUint32(24, bytes.length, true);
+    cv.setUint32(16, crc32(bytes), true); cv.setUint32(20, payload.length, true); cv.setUint32(24, bytes.length, true);
     cv.setUint16(28, nameBytes.length, true); cv.setUint32(42, offset, true);
     ch.set(nameBytes, 46);
     locals.push(lh, payload); central.push(ch);

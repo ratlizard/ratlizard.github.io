@@ -20,3 +20,14 @@ const stubs = { document, window, matchMedia: () => ({ matches: true }), localSt
 const fn = new Function(...Object.keys(stubs), script.replace(/^\s*'use strict';/, ''));
 fn(...Object.values(stubs));
 console.log('page script ran to the end');
+
+// The vendored grimoire files and this script share one global scope, so a
+// top-level name declared in both is one silently replacing the other. The
+// page's own fourcc(n) did exactly that to grimoire's fourcc(bytes, offset),
+// and every StuffIt, BinHex and MacBinary read on the page went wrong with it.
+const tops = src => new Set([...src.matchAll(/^(?:async\s+)?(?:function\s*\*?\s*|(?:const|let|var|class)\s+)([A-Za-z_$][\w$]*)/gm)].map(m => m[1]));
+const mine = tops(script), clashes = [];
+for (const f of [...html.matchAll(/<script src="(delv\/[^"]+)"/g)].map(m => m[1]))
+  for (const name of tops(readFileSync(new URL('./' + f, import.meta.url), 'utf8'))) if (mine.has(name)) clashes.push(`${name} (${f})`);
+if (clashes.length) { console.error('FAIL: the page redeclares names the vendored scripts define: ' + clashes.join(', ')); process.exit(1); }
+console.log('no top-level name is declared both here and in delv/');

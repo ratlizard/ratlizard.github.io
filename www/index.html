@@ -21,7 +21,8 @@
      phone was turned. Every edge that touches the screen now adds the inset
      for its side; on a phone with nothing in the way each `env()` is 0. */
   #bar { padding: calc(6px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 6px calc(10px + env(safe-area-inset-left));
-         display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 0 0 auto; }
+         flex: 0 0 auto; position: relative; }
+  #barrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   /* The bar's controls were browser-default buttons on a dark ground, which
      read as an unfinished page rather than a quiet one. These are the same
      controls, given the page's own colours. */
@@ -32,21 +33,29 @@
   #bar button:disabled { opacity: .38; cursor: default; }
   #bar button:focus-visible, #bar .linkbtn:focus-visible { outline: 2px solid #6a8fd0; outline-offset: 1px; }
   /* Start is the one thing to press on an empty page, so it is the one
-     control that is coloured. It loses the colour once it becomes Restart. */
+     control that is coloured, and it goes once the game is running. */
   #bar button#play { background: #2f4a2f; border-color: #4a6b42; color: #eaf3e6; font-weight: 600; }
   #bar button#play:hover:not(:disabled) { background: #395a37; }
-  #bar button#play.restart { background: #232323; border-color: #3a3a3a; color: #ddd; font-weight: inherit; }
-  #bar button#play.confirm { background: #5a2f2f; border-color: #7a4141; color: #f7e9e9; }
   #stat { color: #9a9a9a; }
   /* On a phone the bar's eight controls wrapped to two rows and took 76 px of
      a 720 px screen away from the game. One row that scrolls sideways
-     instead: nothing is lost and the game keeps the height. */
+     instead: nothing is lost and the game keeps the height. The row scrolls
+     inside the bar rather than being the bar, so an arrow can sit over
+     either end of it saying there is more that way; the arrow is shown only
+     while there is, and a tap on it scrolls the row. */
   @media (max-width: 700px) {
-    #bar { gap: 6px; padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 6px calc(8px + env(safe-area-inset-left)); flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-    #bar::-webkit-scrollbar { display: none; }
+    #bar { padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 6px calc(8px + env(safe-area-inset-left)); }
+    #barrow { gap: 6px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    #barrow::-webkit-scrollbar { display: none; }
     #bar button, #bar .linkbtn, #bar label, #bar #stat { flex: 0 0 auto; white-space: nowrap; }
     #bar button, #bar .linkbtn { padding: 5px 9px; }
   }
+  /* The arrows' own ids outrank every `#bar button` rule above, hover included. */
+  #bar .barmore { display: none; position: absolute; top: env(safe-area-inset-top); bottom: 0; width: 40px; border: 0; border-radius: 0;
+    font: 600 24px/1 system-ui, sans-serif; color: #eee; }
+  #bar #barleft { left: env(safe-area-inset-left); text-align: left; padding: 0 0 0 7px; background: linear-gradient(to right, #111 55%, rgba(17,17,17,0)); }
+  #bar #barright { right: env(safe-area-inset-right); text-align: right; padding: 0 7px 0 0; background: linear-gradient(to left, #111 55%, rgba(17,17,17,0)); }
+  #bar.more-left #barleft, #bar.more-right #barright { display: block; }
   /* The stage is whatever height is left, and the canvas is the stage. The
      drawn picture is centred and letterboxed by object-fit, which is what
      guestPoint's mapping already assumes. */
@@ -144,7 +153,7 @@
   #savestable button { font: inherit; }
   #armed { position: fixed; top: calc(var(--bar, 41px) + 3px); left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 6px; background: rgba(255,220,120,.85); color: #000; font: 600 12px/1 system-ui, sans-serif; display: none; pointer-events: none; }
 </style>
-<div id="bar">
+<div id="bar"><div id="barrow">
   <button id="play" disabled>Play</button>
   <button id="saves" disabled>Saves</button>
   <button id="menubtn" disabled>Menu</button>
@@ -156,7 +165,7 @@
   <label class="desktop-only"><input type="file" id="file"> pick a .sit</label>
   <a id="grimoirelink" class="linkbtn" href="https://ratlizard.github.io/grimoire/" title="Cythera's data" target="_blank" rel="noopener">Grimoire</a>
   <span id="stat">loading module…</span>
-</div>
+</div><button id="barleft" class="barmore" aria-label="more controls to the left">‹</button><button id="barright" class="barmore" aria-label="more controls to the right">›</button></div>
 <div id="menupanel" class="panel" hidden>
   <div class="row"><b>Menus</b> <span class="dim">the game's own menu bar, which a finger cannot reach at the top of the screen</span> <button id="menuclose">Close</button></div>
   <div id="menus"></div>
@@ -172,7 +181,7 @@
 <div id="savespanel" class="panel" hidden>
   <div class="row"><b>Saves</b> <span id="savesnote"></span> <button id="savesclose">Close</button></div>
   <div class="row">Stored in this browser for this copy of the game, and written back to the game's disk when the page opens. <label><input type="checkbox" id="showall"> show the auto-save and settings</label></div>
-  <div class="row"><label><button id="importbtn">Import a character (.bin)</button><input type="file" id="importfile" accept=".bin,application/x-macbinary,application/octet-stream" hidden></label></div>
+  <div class="row"><label><button id="importbtn">Import a character (.bin or .zip)</button><input type="file" id="importfile" accept=".bin,.zip,application/x-macbinary,application/zip,application/octet-stream" hidden></label></div>
   <table id="savestable"></table>
 </div>
 <div id="stage"><canvas id="screen" width="800" height="600"></canvas></div>
@@ -375,12 +384,36 @@ function noteBarHeight() {
     document.getElementById('bar').getBoundingClientRect().height + 'px');
 }
 // And it changes for reasons no resize fires for: the status text goes when
-// the module has loaded, Play becomes Restart, the controls wrap on a window
+// the module has loaded, Play goes, the controls wrap on a window
 // between the phone's width and the row's. Measured once at parse, above, and
 // again whenever the box itself moves -- which is what put the panels 37 px
 // below the bar on a wide window, where they were still placed for the two
 // rows the bar had while it said "loading module...".
 if (window.ResizeObserver) new ResizeObserver(noteBarHeight).observe(document.getElementById('bar'));
+// On a phone the bar is one row that scrolls sideways, and nothing about a
+// row cut off at the edge of the screen says that it goes on. An arrow over
+// either end says so while there is more that way, and a tap on it scrolls
+// the row most of a width. What the row holds changes width without the row
+// itself resizing -- Play goes, the status text comes and goes --
+// so each control is watched as well as the row.
+{
+  const bar = document.getElementById('bar'), row = document.getElementById('barrow');
+  const noteBarEnds = () => {
+    const max = row.scrollWidth - row.clientWidth;
+    bar.classList.toggle('more-left', row.scrollLeft > 2);
+    bar.classList.toggle('more-right', row.scrollLeft < max - 2);
+  };
+  row.addEventListener('scroll', noteBarEnds, { passive: true });
+  window.addEventListener('resize', noteBarEnds);
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(noteBarEnds);
+    ro.observe(row);
+    for (const c of row.children) ro.observe(c);
+  }
+  for (const [id, dir] of [['barleft', -1], ['barright', 1]])
+    document.getElementById(id).addEventListener('click', () => row.scrollBy({ left: dir * row.clientWidth * 0.7, behavior: 'smooth' }));
+  noteBarEnds();
+}
 fitToViewport();
 window.addEventListener('resize', fitToViewport);
 window.addEventListener('orientationchange', () => setTimeout(fitToViewport, 120));
@@ -541,7 +574,11 @@ window.addEventListener('pagehide', syncSaves);
 // MacBinary II: one file carrying both forks and the Finder info, which is
 // what a character file needs to survive a trip through mail or Files.
 function crc16(bytes) { let c = 0; for (const b of bytes) { c ^= b << 8; for (let i = 0; i < 8; i++) c = (c & 0x8000) ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; } return c; }
-function fourcc(n) { return String.fromCharCode(n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255); }
+// Not `fourcc`: grimoire's mac-bytes.js, loaded before this script, defines a
+// fourcc(bytes, offset) that its StuffIt, BinHex and MacBinary readers call,
+// and a function declared here under the same name replaced it for all of
+// them -- with that in place the Patches panel did not recognise a .sit.
+function typeCode(n) { return String.fromCharCode(n >>> 24 & 255, n >>> 16 & 255, n >>> 8 & 255, n & 255); }
 function toMacBinary(rec) {
   const name = new TextEncoder().encode(rec.path.split('/').pop()).slice(0, 63);
   const pad = n => (n + 127) & ~127;
@@ -574,13 +611,13 @@ function gameFolder() {
   return full.slice(0, full.lastIndexOf('/') + 1);
 }
 function macDate(secs) { return secs ? new Date((secs - MAC_EPOCH_OFFSET) * 1000).toLocaleString() : ''; }
-function kindOf(rec) { const t = fourcc(rec.type); return t === 'DelP' ? 'character' : t === 'Temp' ? 'auto-save / custom data' : t === 'pref' ? 'settings' : t; }
+function kindOf(rec) { const t = typeCode(rec.type); return t === 'DelP' ? 'character' : t === 'Temp' ? 'auto-save / custom data' : t === 'pref' ? 'settings' : t; }
 const panel = document.getElementById('savespanel'), table = document.getElementById('savestable');
 async function renderSaves() {
   let recs = [];
   try { recs = await listSaves(); } catch (e) { document.getElementById('savesnote').textContent = 'store unavailable: ' + e; }
   const all = document.getElementById('showall').checked;
-  const shown = recs.filter(r => all || fourcc(r.type) === 'DelP').sort((a, b) => b.modified - a.modified);
+  const shown = recs.filter(r => all || typeCode(r.type) === 'DelP').sort((a, b) => b.modified - a.modified);
   document.getElementById('savesnote').textContent = gameId ? `${recs.length} file(s) for ${gameId}` : 'no game loaded yet';
   table.innerHTML = '<tr><th>name</th><th>kind</th><th>size</th><th>modified</th><th></th></tr>' + shown.map((r, i) =>
     `<tr><td>${r.path.split('/').pop().replace(/</g, '&lt;')}</td><td>${kindOf(r)}</td><td>${(r.data.length + r.rsrc.length).toLocaleString()} B</td><td>${macDate(r.modified)}</td><td><button data-i="${i}" data-act="export">Export</button> <button data-i="${i}" data-act="delete">Delete</button></td></tr>`).join('');
@@ -677,43 +714,116 @@ function clearMusicStore() {
   return listMusic().then(recs => idbMusic('readwrite', st => { for (const r of recs) st.delete(r.key); }));
 }
 
-// Enough of a zip reader for a folder of files: find the end-of-central-
-// directory record, walk the central directory, and take each entry either
-// stored or deflated. DecompressionStream does the inflating, so there is no
-// library to load. Zip64 and encrypted entries are not handled; entries that
-// cannot be unpacked are counted and reported rather than guessed at.
+// A zip reader, and the one the page has: the Music panel's folder of tunes,
+// and a save or a patch sent to a phone, which arrives as a zip because the
+// Files app's Compress makes one and iOS cannot take a file out of it first.
+// Find the end-of-central-directory record, walk the central directory, and
+// take each entry stored or deflated. DecompressionStream does the
+// inflating, so there is no library to load. Zip64 and encrypted entries are
+// not handled; an entry that cannot be read is named in `skipped` rather
+// than guessed at, and one that inflates to the wrong bytes fails its CRC.
+//
+// A zip has nowhere to put a resource fork or a Finder type, so a Mac writes
+// them as an AppleDouble file beside the real one: `._name` in the same
+// folder, or the same path under a top-level `__MACOSX/`. Those are joined to
+// the file they describe, which is what a saved game needs -- its type and
+// its resource fork are half of it. This is grimoire's js/mac-zip.js done
+// again rather than vendored: that file calls grimoire's synchronous
+// inflateRaw, and the async one here would replace it in the shared scope.
+// crc32 and decodeMacRoman are grimoire's, from delv/mac-bytes.js.
 async function inflateRaw(raw) {
   if (typeof DecompressionStream === 'undefined') return null;
   const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
-async function unzip(buf) {
+function isZip(buf) {
+  if (!buf || buf.length < 22) return false;
+  const sig = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+  return sig === 0x04034b50 || sig === 0x06054b50;
+}
+// The resource fork and the Finder info out of an AppleDouble, or null.
+function appleDoubleParts(u8) {
+  if (u8.length < 26) return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if (dv.getUint32(0) !== 0x00051607) return null;
+  const out = { rsrc: new Uint8Array(0), type: 0, creator: 0, flags: 0, created: 0, modified: 0 };
+  for (let i = 0, n = dv.getUint16(24); i < n && 26 + i * 12 + 12 <= u8.length; i++) {
+    const e = 26 + i * 12, id = dv.getUint32(e), off = dv.getUint32(e + 4), len = dv.getUint32(e + 8);
+    if (off + len > u8.length) continue;
+    if (id === 2) out.rsrc = u8.slice(off, off + len);
+    else if (id === 9 && len >= 10) { out.type = dv.getUint32(off); out.creator = dv.getUint32(off + 4); out.flags = dv.getUint16(off + 8); }
+    // Seconds either side of 1 January 2000, where the Mac counts from 1904.
+    else if (id === 8 && len >= 8) { out.created = dv.getInt32(off) + 3029529600; out.modified = dv.getInt32(off + 4) + 3029529600; }
+  }
+  return out;
+}
+// Returns { files: [{ path, name, data, rsrc, type, creator, flags, created,
+// modified }], skipped }
+// or null when the bytes are not a zip. `want(path)` chooses which files are
+// read at all; the Finder's own .DS_Store is never one of them. A file with
+// no AppleDouble has type and creator 0 and an empty resource fork.
+async function readZip(buf, want = () => true) {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let eocd = -1;
   for (let i = buf.length - 22; i >= 0 && i > buf.length - 22 - 65536; i--) {
     if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
   if (eocd < 0) return null;
-  const count = dv.getUint16(eocd + 10, true);
-  let p = dv.getUint32(eocd + 16, true), out = [], skipped = 0;
+  const count = dv.getUint16(eocd + 10, true), dir = [];
+  let p = dv.getUint32(eocd + 16, true);
   for (let n = 0; n < count && p + 46 <= buf.length; n++) {
     if (dv.getUint32(p, true) !== 0x02014b50) break;
-    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
-    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true);
-    const commentLen = dv.getUint16(p + 32, true), local = dv.getUint32(p + 42, true);
-    const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true);
+    const raw = buf.subarray(p + 46, p + 46 + nameLen);
+    // The Finder writes UTF-8 names without setting the flag that says so,
+    // and a zip made on a classic Mac has Mac Roman ones.
+    let path;
+    try { path = new TextDecoder('utf-8', { fatal: true }).decode(raw); }
+    catch (e) { path = decodeMacRoman(raw); }
+    dir.push({ path: path.normalize('NFC'), flags: dv.getUint16(p + 8, true), method: dv.getUint16(p + 10, true),
+               crc: dv.getUint32(p + 16, true), csize: dv.getUint32(p + 20, true), size: dv.getUint32(p + 24, true),
+               local: dv.getUint32(p + 42, true) });
     p += 46 + nameLen + extraLen + commentLen;
-    if (!MUSIC_ANY.test(name) || /(^|\/)__MACOSX\//.test(name)) continue;
-    if (dv.getUint32(local, true) !== 0x04034b50) { skipped++; continue; }
-    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
-    const raw = buf.subarray(start, start + csize);
-    let bytes = null;
-    if (method === 0) bytes = raw.slice();
-    else if (method === 8) bytes = await inflateRaw(raw);
-    if (bytes) out.push({ name, bytes }); else skipped++;
   }
-  if (skipped) say(`music: ${skipped} entr${skipped === 1 ? 'y' : 'ies'} in the zip could not be unpacked`);
-  return out;
+  async function read(e) {
+    if (e.flags & 1) throw new Error('encrypted');
+    if (e.local + 30 > buf.length || dv.getUint32(e.local, true) !== 0x04034b50) throw new Error('no local header where the directory says');
+    const start = e.local + 30 + dv.getUint16(e.local + 26, true) + dv.getUint16(e.local + 28, true);
+    const raw = buf.subarray(start, start + e.csize);
+    let bytes = null;
+    if (e.method === 0) bytes = raw.slice();
+    else if (e.method === 8) bytes = await inflateRaw(raw);
+    else throw new Error('compressed with zip method ' + e.method);
+    if (!bytes) throw new Error('this browser cannot inflate');
+    if (bytes.length !== e.size || crc32(bytes) !== e.crc) throw new Error('fails its checksum');
+    return bytes;
+  }
+  const files = [], doubles = new Map(), skipped = [];
+  for (const e of dir) {
+    if (/\/$/.test(e.path)) continue;
+    const inMacosx = e.path.startsWith('__MACOSX/');
+    const rel = inMacosx ? e.path.slice('__MACOSX/'.length) : e.path;
+    const m = /^(.*\/)?\._([^/]+)$/.exec(rel);
+    if (m) { doubles.set((m[1] || '') + m[2], e); continue; }
+    if (inMacosx || /(^|\/)\.DS_Store$/.test(e.path) || !want(e.path)) continue;
+    files.push(e);
+  }
+  const out = [];
+  for (const e of files) {
+    try {
+      const f = { path: e.path, name: e.path.split('/').pop(), data: await read(e), rsrc: new Uint8Array(0), type: 0, creator: 0, flags: 0, created: 0, modified: 0 };
+      const ad = doubles.get(e.path);
+      if (ad) { const parts = appleDoubleParts(await read(ad)); if (parts) Object.assign(f, parts); }
+      out.push(f);
+    } catch (err) { skipped.push(`"${e.path}" (${err.message})`); }
+  }
+  return { files: out, skipped };
+}
+async function unzip(buf) {
+  const z = await readZip(buf, path => MUSIC_ANY.test(path));
+  if (!z) return null;
+  if (z.skipped.length) say(`music: ${z.skipped.length} entr${z.skipped.length === 1 ? 'y' : 'ies'} in the zip could not be unpacked: ${z.skipped.join(', ')}`);
+  return z.files.map(f => ({ name: f.path, bytes: f.data }));
 }
 
 // "10" after "9", not before it, so a numbered set of tracks lands in the
@@ -905,6 +1015,25 @@ function unwrapPatch(fileName, u8) {
   return { name, bytes };
 }
 
+// A patch sent to a phone comes zipped, as a save does, and a zip can hold
+// the ReadMe beside it. Each file in it is unwrapped in turn and the first
+// that comes out a Delver Archive is the patch.
+async function unwrapPatchFile(fileName, u8) {
+  if (!isZip(u8)) return unwrapPatch(fileName, u8);
+  const z = await readZip(u8);
+  if (!z) throw new Error(fileName + ' is not a whole zip');
+  const passed = [...z.skipped];
+  for (const e of z.files) {
+    try {
+      const u = unwrapPatch(e.name, e.data);
+      if (describeDelverArchive(u.bytes).ok) return u;
+      passed.push('"' + e.path + '"');
+    } catch (err) { passed.push('"' + e.path + '" (' + err.message + ')'); }
+  }
+  throw new Error('Nothing in ' + fileName + ' is a Delver Archive, so there is no patch in it.' +
+                  (passed.length ? ' It holds ' + passed.join(', ') + '.' : ''));
+}
+
 // Apply every stored patch to the archive on the disk. Called between cw_load
 // and cw_start; anything that fails is reported and skipped, because a patch
 // that stops working must not stop the game booting.
@@ -964,7 +1093,7 @@ document.getElementById('patchfile').onchange = async e => {
   try {
     await boot();
     const raw = new Uint8Array(await file.arrayBuffer());
-    const unwrapped = unwrapPatch(file.name, raw);
+    const unwrapped = await unwrapPatchFile(file.name, raw);
     // Merge once now, against the archive as loaded, so a file that cannot
     // work says so here rather than silently at the next load.
     const path = findPath('Cythera Data');
@@ -1148,17 +1277,46 @@ document.getElementById('saves').onclick = () => { panel.hidden = !panel.hidden;
 document.getElementById('savesclose').onclick = () => panel.hidden = true;
 document.getElementById('showall').onchange = renderSaves;
 document.getElementById('importbtn').onclick = () => document.getElementById('importfile').click();
+// A character comes in as the .bin the Export button makes, or as a zip: a
+// save sent to a phone arrives as one, and so does the community's Rocky the
+// Flying Chicken, two characters in a folder. Out of a zip every one of the
+// game's own files is taken, whether it came with its AppleDouble or as a
+// .bin; anything else in it is named and left.
+const GAME_CREATOR = 0x44656C76; // 'Delv'
+async function savesFromFile(f) {
+  const u8 = new Uint8Array(await f.arrayBuffer());
+  if (!isZip(u8)) return { recs: [fromMacBinary(u8)], left: [] };
+  const z = await readZip(u8);
+  if (!z) throw new Error(f.name + ' is not a whole zip');
+  const recs = [], left = [...z.skipped];
+  for (const e of z.files) {
+    let rec = null;
+    if (e.type) rec = e;
+    else { try { rec = fromMacBinary(e.data); } catch (err) {} }
+    if (!rec) left.push(`"${e.path}" (no Mac file type: it lost its resource fork on the way)`);
+    else if (rec.creator !== GAME_CREATOR) left.push(`"${e.path}" (a ${typeCode(rec.type)} file, not one of Cythera's)`);
+    else recs.push(rec);
+  }
+  if (!recs.length) throw new Error('nothing in ' + f.name + ' is a Cythera file' + (left.length ? ': ' + left.join(', ') : ''));
+  return { recs, left };
+}
 document.getElementById('importfile').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return; e.target.value = '';
+  const note = document.getElementById('savesnote');
   try {
-    const mb = fromMacBinary(new Uint8Array(await f.arrayBuffer()));
     if (!gameId) { say('load the game first, so the character goes into the right folder'); return; }
-    const rec = { path: (booted ? gameFolder() : 'Cythera 1.0.4 ƒ/') + mb.name, type: mb.type, creator: mb.creator, flags: mb.flags, created: mb.created, modified: mb.modified, data: mb.data, rsrc: mb.rsrc, savedAt: Date.now() };
-    await putSave(rec);
-    if (booted) importRecord(rec);
-    say(`imported ${mb.name} (${fourcc(mb.type)}/${fourcc(mb.creator)}, ${mb.data.length}+${mb.rsrc.length} bytes)`);
-    renderSaves();
-  } catch (err) { say('import failed: ' + err.message); }
+    const { recs, left } = await savesFromFile(f);
+    const now = Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET;
+    for (const mb of recs) {
+      const rec = { path: (booted ? gameFolder() : 'Cythera 1.0.4 ƒ/') + mb.name, type: mb.type, creator: mb.creator, flags: mb.flags, created: mb.created || now, modified: mb.modified || now, data: mb.data, rsrc: mb.rsrc, savedAt: Date.now() };
+      await putSave(rec);
+      if (booted) importRecord(rec);
+      say(`imported ${mb.name} (${typeCode(mb.type)}/${typeCode(mb.creator)}, ${mb.data.length}+${mb.rsrc.length} bytes)`);
+    }
+    if (left.length) say(`import: left out of ${f.name}: ${left.join(', ')}`);
+    await renderSaves();
+    if (recs.length > 1 || left.length) note.textContent = `imported ${recs.length} from ${f.name}` + (left.length ? `, left out ${left.length}` : '');
+  } catch (err) { say('import failed: ' + err.message); note.textContent = 'import failed: ' + err.message; }
 });
 // How much of the screen is lit, sampled rather than counted in full so it
 // can be taken on every frame that is drawn. Cythera draws nothing at all
@@ -1486,35 +1644,25 @@ function fastForward() {
   });
 }
 // Once the game is running the Play button has nothing left to start, so it
-// becomes Restart. Restarting is a reload: the saves live in IndexedDB and are
-// restored on boot, so a restart costs nothing that was written to a character.
-// It takes two presses, and disarms itself after four seconds, because the bar
-// sits directly above the canvas and a stray thumb should not be able to throw
-// a session away. Play is not merely decoration before that point -- it makes
-// the AudioContext inside the tap, which is the only moment iOS allows one.
-function becomeRestart() {
-  const b = document.getElementById('play');
-  let armed = 0;
-  b.classList.add('restart');
-  b.textContent = 'Restart';
-  b.onclick = () => {
-    if (armed) {
-      clearTimeout(armed); armed = 0;
-      b.disabled = true; b.textContent = 'restarting…';
-      location.reload();
-      return;
-    }
-    b.classList.add('confirm');
-    b.textContent = 'Restart? tap again';
-    armed = setTimeout(() => {
-      armed = 0; b.classList.remove('confirm'); b.textContent = 'Restart';
-    }, 4000);
-  };
-}
-document.getElementById('play').onclick = () => { unlockAudio(); return boot().then(fastForward).then(() => {
+// goes. Play is not merely decoration before that point -- it makes the
+// AudioContext inside the tap, which is the only moment iOS allows one. After
+// it the button was Restart, a reload in two taps, and it read as Stop,
+// because the reload lands back on Play; it was renamed Refresh and then, on
+// 19 September 2026, taken out at the maintainer's word. Everything that
+// needs a reload asks for one itself -- adding or removing a patch, turning
+// cheats on -- and the browser's own reload is always there, since the page
+// is never an installed app. A version that went straight back into the
+// game after a reload, with the sound unlocked by the first tap on it, was
+// built and set aside too; PLAYER-NOTES.md has what it took.
+let playStarted = false;
+function play() {
+  if (playStarted) return;
+  playStarted = true;
+  document.getElementById('play').disabled = true;
+  return boot().then(fastForward).then(() => {
   mode = 'play'; document.body.classList.add('playing');
   clampPads();  // the pads were hidden until now, so this is the first chance to
-  becomeRestart();
+  document.getElementById('play').hidden = true;
   // The boot ran headless; drop the audio it synthesised for those ticks.
   wasm.cw_audio_drain();
   let startTick = wasm.cw_tick(), t0 = performance.now();
@@ -1702,8 +1850,11 @@ document.getElementById('play').onclick = () => { unlockAudio(); return boot().t
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
-}).catch(e => say('could not start: ' + (e.stack || e))); };
-
+}).catch(e => {
+  say('could not start: ' + (e.stack || e));
+  playStarted = false; document.getElementById('play').disabled = false;
+}); }
+document.getElementById('play').onclick = () => { unlockAudio(); return play(); };
 // --- input: the pointer
 function guestPoint(e) {
   const r = canvas.getBoundingClientRect();

@@ -88,9 +88,12 @@ const run = async expr => {
 };
 // A real mouse event, not element.click(): the page's own handlers are what is
 // being measured, and Play makes its AudioContext inside the tap.
+// On a phone the bar is a row that scrolls, so a control is brought into view
+// first, as a thumb would, and clear of the arrows over its ends.
 const click = async sel => {
   const at = await run(`(() => { const e = document.querySelector(${JSON.stringify(sel)});
-    if (!e) return null; const r = e.getBoundingClientRect();
+    if (!e) return null; if (e.closest('#barrow')) e.scrollIntoView({ inline: 'center', block: 'nearest' });
+    const r = e.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   if (!at) throw new Error('no such control: ' + sel);
   for (const type of ['mousePressed', 'mouseReleased'])
@@ -130,6 +133,37 @@ for (const [name, w, h] of SIZES) {
   else ok(`${name} the page is exactly the window, and does not scroll`, `${w}x${h}`);
 
   if (!view.touch) fail(`${name} the touch shell`, 'a coarse pointer did not turn it on');
+
+  // The bar's row, and the arrows that say it goes on. An arrow is shown
+  // exactly when the row has more that way, sits on the screen, and scrolls
+  // the row when tapped; with nothing off either end there is no arrow.
+  {
+    const ends = () => run(`(() => { const r = document.getElementById('barrow'), b = document.getElementById('bar');
+      const shown = id => getComputedStyle(document.getElementById(id)).display !== 'none';
+      return { at: Math.round(r.scrollLeft), max: r.scrollWidth - r.clientWidth, left: shown('barleft'), right: shown('barright') }; })()`);
+    await run(`document.getElementById('barrow').scrollLeft = 0`); await sleep(300);
+    const start = await ends();
+    const bad = [];
+    if (start.max <= 2) {
+      if (start.left || start.right) bad.push('an arrow is shown on a row with nothing off either end');
+      else ok(`${name} the bar's row fits, and no arrow is shown`);
+    } else {
+      if (start.left || !start.right) bad.push(`at the start: left arrow ${start.left}, right arrow ${start.right}`);
+      const a = await box('#barright');
+      if (!a || a.left < 0 || a.right > w) bad.push(`the right arrow is at ${a ? a.left + '..' + a.right : 'nowhere'}`);
+      await click('#barright'); await sleep(700);
+      const moved = await ends();
+      if (moved.at <= 0) bad.push('tapping the right arrow did not scroll the row');
+      await run(`document.getElementById('barrow').scrollLeft = 1e6`); await sleep(300);
+      const end = await ends();
+      if (!end.left || end.right) bad.push(`at the end: left arrow ${end.left}, right arrow ${end.right}`);
+      await click('#barleft'); await sleep(700);
+      if ((await ends()).at >= end.at) bad.push('tapping the left arrow did not scroll the row back');
+      if (!bad.length) ok(`${name} the bar's row runs ${start.max} px past the screen and the arrows say so`, `a tap scrolled it to ${moved.at}`);
+    }
+    if (bad.length) fail(`${name} the bar's arrows`, bad.join('; '));
+    await run(`document.getElementById('barrow').scrollLeft = 0`); await sleep(200);
+  }
 
   const off = [];
   for (const [button, panel, closer] of PANELS) {
