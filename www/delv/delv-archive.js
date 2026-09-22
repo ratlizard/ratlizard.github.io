@@ -611,16 +611,6 @@ function decryptResource(data, resid) {
   return out;
 }
 
-function printableRatio(data) {
-  if (!data.length) return 0;
-  let count = 0;
-  for (let i = 0; i < data.length; i++) {
-    const b = data[i];
-    if (b >= 32 && b <= 126) count++;
-  }
-  return count / data.length;
-}
-
 function byteEntropy(data) {
   if (!data.length) return 0;
   const counts = new Array(256).fill(0);
@@ -633,6 +623,226 @@ function byteEntropy(data) {
   }
   return h;
 }
+
+/* What shape is this payload?
+ * ---------------------------------------------------------------------------
+ * These are the clear side of the encrypted-or-not question, and the reason
+ * they exist is a measurement. The fallback below used to decide anything the
+ * tables and the two script tests did not cover on byte statistics, and
+ * utilities/addons_check.mjs scored that at 63.3% against the tables. The
+ * breakdown said the errors were one-sided: 554 of 572 were CLEAR resources
+ * being decrypted, and only 18 were encrypted resources left as they were.
+ *
+ * The cause is arithmetic, not weakness. The cipher is an XOR keystream, so
+ * its output is uniform: 95 of 256 byte values are printable ASCII, which is
+ * a printable ratio of 0.37, and its entropy is 8 bits. A DCG opcode stream
+ * is mostly bytes above 0x80 and scores a printable ratio near 0.1; an `asnd`
+ * body is signed samples. So on the old score -- printable ratio minus
+ * entropy over 32 -- noise BEAT every graphic, sound and table in the
+ * archive. It was not deciding badly; it was biased towards "decrypt" by
+ * construction, which is why it scored below a coin flip.
+ *
+ * So each test below asks whether the bytes are a payload the archive is
+ * known to hold, and every one of them is derived from a format the rest of
+ * this project already reads: the DCG stream decompressDCG walks, the `asnd`
+ * header decodeSound reads, a QuickTime music atom, parseDelverMap's header,
+ * parseDelverPropList's 16-byte records, and the two script tests in
+ * js/delv-script.js. None of them may look at the subindex number, because
+ * the fallback exists precisely for subindexes nothing has an opinion about;
+ * a modded archive's new subindex has no canonical size to check against.
+ *
+ * MEASURED, both ways, over the 1,558 labelled resources of the shipped
+ * archive and their decrypted twins: every test fires on the plaintexts of
+ * its own kind and on NONE of the 1,558 noise twins. That negative control is
+ * the half worth keeping -- a shape test that fires on noise does not widen
+ * the structure path, it moves errors into it. addons_check.mjs prints the
+ * per-shape figures on every run.
+ */
+function delvLooksLikeSound(b) {
+  // js/page-labels.js decodeSound: Delver's own sound resource, not a Mac
+  // `snd `. A four-byte magic is the strongest evidence in the archive.
+  return b.length > 12 && typeof fourcc === 'function' && fourcc(b, 0) === 'asnd';
+}
+
+function delvLooksLikeMusic(b) {
+  // Subindex 143 is QuickTime music. A QuickTime atom is a big-endian size
+  // followed by a four-character type, so either the size accounts for the
+  // whole resource or the type is there to read.
+  if (b.length < 8) return false;
+  return u32be(b, 0) === b.length ||
+         (typeof fourcc === 'function' && fourcc(b, 4) === 'musi');
+}
+
+/* Does this parse as a DCG opcode stream?
+ *
+ * decompressDCG in js/delv-graphics.js is deliberately forgiving -- it returns
+ * the pixels it managed rather than discarding a whole image over one bad byte
+ * -- so "it decoded" is no evidence at all. This is the strict reading of the
+ * same opcode table: every opcode defined (0xF8-0xFD are not), every operand
+ * and literal run inside the buffer, every back-reference pointing at a pixel
+ * already written, and a terminator (0xFF or 0xFE) reached with at most one
+ * byte left over. That last clause is what makes it decisive: noise reaches a
+ * terminator byte eventually, but essentially never at the end of the
+ * resource. `off` is 4 for the sized resources that carry a {width, height}
+ * header before the stream.
+ */
+function delvDcgStream(b, off) {
+  let d = off, px = 0, ops = 0;
+  const len = b.length;
+  while (d < len) {
+    if (++ops > 300000) return false;
+    const opcode = b[d];
+    if (opcode < 0x80) {
+      if (d + 2 > len) return false;
+      const op = b.slice(d, d + 2); d += 2;
+      const index = -(ncbitsOf(op, [[3,8],[7,1]]) + 1);
+      const length = bitsOfSingle(op, 3, 13) + 3, literals = bitsOfSingle(op, 2, 11);
+      if (d + literals > len) return false;
+      d += literals; px += literals;
+      if (px + index < 0) return false;
+      px += length;
+    } else if (opcode < 0xC0) {
+      if (d + 3 > len) return false;
+      const op = b.slice(d, d + 3); d += 3;
+      const index = -(ncbitsOf(op, [[6,16],[3,8],[6,2]]) + 1);
+      const length = bitsOfSingle(op, 5, 11) + 3, literals = bitsOfSingle(op, 2, 22);
+      if (d + literals > len) return false;
+      d += literals; px += literals;
+      if (px + index < 0) return false;
+      px += length;
+    } else if (opcode < 0xD0) {
+      const op = b.slice(d, d + 1); d += 1;
+      const size = (bitsOfSingle(op, 4, 4) + 1) * 4;
+      if (d + size > len) return false;
+      d += size; px += size;
+    } else if (opcode < 0xE0) {
+      d += 1;
+      const literals = opcode & 0x03;
+      if (d + literals > len) return false;
+      d += literals; px += literals;
+    } else if (opcode < 0xF0) {
+      if (d + 2 > len) return false;
+      const op = b.slice(d, d + 2); d += 2;
+      px += bitsOfSingle(op, 4, 4) + 3;
+    } else if (opcode < 0xF8) {
+      if (d + 3 > len) return false;
+      px += b[d + 1] + 3; d += 3;
+    } else if (opcode === 0xFF || opcode === 0xFE) {
+      return px > 0 && len - (d + 1) <= 1;
+    } else return false;                       // 0xF8-0xFD are undefined
+  }
+  return false;                                // ran out without terminating
+}
+
+function delvLooksLikeImage(b) {
+  return delvDcgStream(b, 0) || (b.length > 4 && delvDcgStream(b, 4));
+}
+
+function delvLooksLikeSymbolTable(b) {
+  /* A symbol table pairs a two-byte key with a NUL-terminated name, and the
+     archive holds two: 0xF015, whose keys match the StoreRef field of a prop
+     record, and 0xF014 beside it. The test is that the records tile the
+     resource EXACTLY -- every name printable, every one terminated, the last
+     ending on the final byte -- which no keystream output does.
+
+     0xF014 is why this is here. It is the one resource in the whole archive
+     that the entropy comparison cannot reach, and not by a narrow margin:
+     see delvConstantKeystream below. */
+  if (b.length < 8) return false;
+  let p = 0, records = 0;
+  while (p < b.length) {
+    if (p + 3 > b.length) return false;        // no room for a key and a name
+    p += 2;
+    let q = p;
+    while (q < b.length && b[q] !== 0) {
+      if (b[q] < 0x20 || b[q] > 0x7E) return false;
+      q++;
+    }
+    if (q >= b.length) return false;           // ran off the end unterminated
+    if (q - p < 2) return false;               // a name of one character or none
+    p = q + 1; records++;
+  }
+  return records >= 2;
+}
+
+function delvLooksLikePropList(b) {
+  /* parseDelverPropList reads 16-byte records and validates nothing, so the
+     test is the one field that is dead in a stored file: the 4 bytes at +10,
+     which the wiki reads as a prop-to-prop reference and which are zero in
+     every record of the shipped archive because such links are made at
+     runtime. Four zero bytes every sixteen is not something a keystream
+     produces. A save whose records DO carry a link fails this and falls
+     through to the entropy comparison, which is the right way round -- a
+     shape test that misses costs a fallback, one that fires on noise costs a
+     resource. */
+  if (b.length < 16 || b.length % 16) return false;
+  for (let p = 0; p + 16 <= b.length; p += 16)
+    if (b[p + 10] || b[p + 11] || b[p + 12] || b[p + 13]) return false;
+  return true;
+}
+
+/* Is the keystream for this resource id a single repeated byte?
+ * ---------------------------------------------------------------------------
+ * The PRNG is `key = (key * m + b) mod 65536` and only `key & 0xFF` is used, so
+ * the low byte evolves on its own: `(key * m + b) mod 256` depends on nothing
+ * but `key mod 256`. That orbit can land on a fixed point, and for **120 of the
+ * 65,280 valid resource ids it starts on one** -- so the whole "encryption" is
+ * XOR with one constant byte. They fall in subindexes 19, 47, 63, 83, 111, 127,
+ * 147, 175, 191, 211 and 239, eight or sixteen to a subindex; 23 of them hold a
+ * resource in the shipped archive.
+ *
+ * This matters because a constant XOR is a PERMUTATION of byte values, so the
+ * two candidates have the same byte histogram with the labels moved. Every
+ * statistic that reads only the shape of that histogram is blind to the
+ * difference **by construction** -- Shannon entropy here, and delvmod's own
+ * flatness measure in `decrypt_if_required` for the same reason. Their two
+ * values are not merely close, they are mathematically equal, and what actually
+ * decided the comparison was the order the terms were summed in: of the 23,
+ * eleven came out exactly equal in floating point and twelve differed in the
+ * last bits, which is a coin toss wearing a measurement's clothes.
+ *
+ * What is NOT blind is where the histogram sits. Almost every payload here is
+ * full of 0x00 -- padding, the high halves of words, NUL terminators -- and a
+ * constant XOR by k moves all of that to k. So the candidate with more zero
+ * bytes is the plaintext: right on all 23, and the rule is only ever consulted
+ * for an id whose keystream is provably constant.
+ *
+ * The short periods are fine and were checked rather than assumed: period 2, 4,
+ * 8, 16, 32, 64, 128 and 256 agree on every resource in the archive, because a
+ * period above 1 is several interleaved permutations and no longer preserves
+ * the histogram. The blind spot is period 1 alone.
+ */
+function delvConstantKeystream(resid) {
+  let key = (resid ^ (resid >> 8)) & 0xFFFF;
+  const m = ((resid & 0x3F) << 2) + 1, b = resid >> 6;
+  key = (key * m + b) & 0xFFFF;
+  const first = key & 0xFF;
+  key = (key * m + b) & 0xFFFF;
+  return (key & 0xFF) === first ? first : null;
+}
+
+function delvZeroBytes(data) {
+  let n = 0;
+  for (let i = 0; i < data.length; i++) if (data[i] === 0) n++;
+  return n;
+}
+
+/* The bank, most specific first, so that a four-byte magic outranks a parse
+   that only has to be self-consistent. The two script tests are last and are
+   reached through `typeof` because js/delv-script.js is not one of the four
+   files ratlizard.github.io vendors under www/delv/; everything above them is
+   in this file or in mac-bytes.js, which it does vendor, so the player gets
+   the same verdicts for everything but a script. */
+const DELV_SHAPES = [
+  ['sound', b => delvLooksLikeSound(b)],
+  ['music', b => delvLooksLikeMusic(b)],
+  ['image', b => delvLooksLikeImage(b)],
+  ['map', b => !!parseDelverMap(b)],
+  ['prop list', b => delvLooksLikePropList(b)],
+  ['symbol table', b => delvLooksLikeSymbolTable(b)],
+  ['named script', b => (typeof dvmNamedScript === 'function') && !!dvmNamedScript(b)],
+  ['script', (b, resid) => (typeof dvmPlausibleContainer === 'function') && dvmPlausibleContainer(b, resid)],
+];
 
 // Subindices holding pure binary structured data. These are NEVER encrypted,
 // and running the speculative decryptor on them corrupts the bytes -- which
@@ -696,60 +906,83 @@ const DELV_PLAYER_CLEAR_SUBN = new Set([129, 242]);
 function smartDecrypt(data, resid) {
   const subn = Math.floor(resid / 0x100) - 1;
   if (DELV_CLEAR_RESID.has(resid) || DELV_CLEAR_SUBN.has(subn) || DELV_PLAYER_CLEAR_SUBN.has(subn)) {
-    return { data: data, wasDecrypted: false, rawScore: 0, decScore: 0, exempt: true, known: true };
+    return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, exempt: true, known: true };
   }
   if (DELV_ENCRYPTED_SUBN.has(subn)) {
-    return { data: decryptResource(data, resid), wasDecrypted: true, rawScore: 0, decScore: 0, known: true };
+    return { data: decryptResource(data, resid), wasDecrypted: true, rawEntropy: 0, decEntropy: 0, known: true };
   }
   // Beyond here the archive is telling us nothing and neither is delvmod, so
-  // decrypt speculatively and keep whichever version looks more like
-  // plaintext: higher printable-ASCII ratio, lower entropy.
+  // decrypt speculatively and ask which of the two candidates is a payload:
+  // first the two certainties below, then the shape bank, then entropy.
   const decrypted = decryptResource(data, resid);
   // A resource that decrypts to nothing but zero bytes is an empty
   // placeholder, and that is a certainty, not a guess -- the odds of the
   // keystream matching arbitrary ciphertext across every byte are nil.
-  // The scoring heuristic cannot see this: all-zeros has no printable
-  // characters at all, so ciphertext noise beats it and 0x033F, 0x0500 and
-  // 0x0540 were all being shown as raw garbage.
+  // The score this replaces could not see it -- all-zeros has no printable
+  // characters at all, so ciphertext noise beat it and 0x033F, 0x0500 and
+  // 0x0540 were all being shown as raw garbage. The entropy comparison at the
+  // end usually reaches the same verdict, since zeros carry one byte value and
+  // so sit at the floor of the scale -- but NOT always: a two-byte ciphertext
+  // has equal bytes one time in 256, which is also an entropy of 0, and the
+  // tie then keeps the raw bytes and gets this case wrong. A certainty is not
+  // a statistic; neither of these two rules is redundant, and addons_check.mjs
+  // counts what they settle apart from what is guessed.
   let allZero = decrypted.length > 0;
   for (let i = 0; i < decrypted.length; i++) if (decrypted[i] !== 0) { allZero = false; break; }
   let rawZero = data.length > 0;
   for (let i = 0; i < data.length; i++) if (data[i] !== 0) { rawZero = false; break; }
-  if (allZero && !rawZero) return { data: decrypted, wasDecrypted: true, rawScore: 0, decScore: 0, allZero: true };
+  if (allZero && !rawZero) return { data: decrypted, wasDecrypted: true, rawEntropy: 0, decEntropy: 0, allZero: true };
   /* And the same certainty the other way round, which was missing until
      7 September 2026. A resource that is ALREADY nothing but zero bytes
      cannot be ciphertext: the keystream is never all zeros, so no plaintext
-     encrypts to this. The scoring heuristic cannot see that either -- zeros
-     have no printable characters, so the noise it would decrypt to wins --
-     and a saved game is where it showed: three of a player file's own
-     subindexes (0x82zz map memory, 0xF307 and 0xF308, the script heap) are
-     zero-filled in an early save and were all being served as garbage. */
-  if (rawZero) return { data: data, wasDecrypted: false, rawScore: 0, decScore: 0, allZero: true };
-  const rawScore = printableRatio(data) - byteEntropy(data) / 32;
-  const decScore = printableRatio(decrypted) - byteEntropy(decrypted) / 32;
-  // Byte statistics alone get it wrong for small script resources: 0x1050 and
-  // 0x1914 happen to begin with 0x81 in their encrypted form, which reads as a
-  // function header and wins on printable ratio. Now that the container format
-  // is understood, ask which candidate actually parses -- structure beats
-  // statistics whenever exactly one of the two is well formed.
-  if (typeof dvmPlausibleContainer === 'function') {
-    // Subindex 3's named scripts are plaintext but look like nothing to the
-    // container test, and their bytecode has few printable bytes, so the score
-    // heuristic was "decrypting" all fourteen into noise. A leading Pascal
-    // name is decisive structure -- keystream output does not spell "Defend".
-    const rawNamed = (typeof dvmNamedScript === 'function') && dvmNamedScript(data);
-    const decNamed = (typeof dvmNamedScript === 'function') && dvmNamedScript(decrypted);
-    if (rawNamed && !decNamed) return { data: data, wasDecrypted: false, rawScore: 0, decScore: 0, byStructure: true };
-    if (decNamed && !rawNamed) return { data: decrypted, wasDecrypted: true, rawScore: 0, decScore: 0, byStructure: true };
-    const rawOk = dvmPlausibleContainer(data, resid);
-    const decOk = dvmPlausibleContainer(decrypted, resid);
-    if (decOk && !rawOk) return { data: decrypted, wasDecrypted: true, rawScore, decScore, byStructure: true };
-    if (rawOk && !decOk) return { data: data, wasDecrypted: false, rawScore, decScore, byStructure: true };
+     encrypts to this. The score could not see that either -- zeros have no
+     printable characters, so the noise it would decrypt to won -- and a saved
+     game is where it showed: three of a player file's own subindexes (0x82zz
+     map memory, 0xF307 and 0xF308, the script heap) are zero-filled in an
+     early save and were all being served as garbage. Like the rule above it,
+     the entropy comparison settles this the same way for anything longer than
+     a couple of bytes, and not for a resource short enough that noise can tie
+     with zeros. */
+  if (rawZero) return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, allZero: true };
+  /* Structure beats statistics whenever exactly one of the two candidates is
+     a payload this archive is known to hold. Each shape is tried on both, most
+     specific first, and the first one that recognises exactly one of them
+     decides; a shape that recognises both, or neither, says nothing and the
+     next is tried. (Both is the common case for the loosest test in the bank
+     and is why it is last.) */
+  for (const [shape, test] of DELV_SHAPES) {
+    const rawOk = test(data, resid), decOk = test(decrypted, resid);
+    if (rawOk === decOk) continue;
+    if (decOk) return { data: decrypted, wasDecrypted: true, rawEntropy: 0, decEntropy: 0, byStructure: true, shape };
+    return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, byStructure: true, shape };
   }
-  if (decScore > rawScore) {
-    return { data: decrypted, wasDecrypted: true, rawScore, decScore };
+  /* Nothing recognised either candidate, so fall back to the one statistic the
+     cipher cannot escape: its keystream is uniform, so its output sits at 8
+     bits of entropy a byte and anything structured sits below that. Taking the
+     lower of the two agrees with the tables on 98.5% of the shipped archive on
+     its own, against 63.3% for the printable-ratio score this replaces, and it
+     is what the score's entropy term was already reaching for before the
+     printable ratio -- which is 0.37 for noise and lower for most of the
+     archive -- overwhelmed it.
+     A tie keeps the bytes as stored. It is the conservative way round: reading
+     an encrypted resource as stored shows noise, while decrypting a clear one
+     rewrites it, and the second is the failure that made 36 of 42 map headers
+     unparseable and drew props off the canvas. */
+  /* Before the histogram statistic, the case it cannot see: a constant
+     keystream, where the two candidates are the same histogram relabelled.
+     Zero bytes decide it instead. If the two hold equally many -- which no
+     resource in the shipped archive does -- this says nothing and the
+     comparison below runs anyway, blind but no worse than before. */
+  if (delvConstantKeystream(resid) !== null) {
+    const rawZeros = delvZeroBytes(data), decZeros = delvZeroBytes(decrypted);
+    if (decZeros > rawZeros) return { data: decrypted, wasDecrypted: true, rawEntropy: 0, decEntropy: 0, constantKeystream: true };
+    if (rawZeros > decZeros) return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, constantKeystream: true };
   }
-  return { data: data, wasDecrypted: false, rawScore, decScore };
+  const rawEntropy = byteEntropy(data), decEntropy = byteEntropy(decrypted);
+  if (decEntropy < rawEntropy) {
+    return { data: decrypted, wasDecrypted: true, rawEntropy, decEntropy };
+  }
+  return { data: data, wasDecrypted: false, rawEntropy, decEntropy };
 }
 
 function extractPascalStrings(data) {
