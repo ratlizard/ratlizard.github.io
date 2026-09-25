@@ -12,6 +12,8 @@ const env = { cw_log: (p, n) => console.log('[wasm]', dec.decode(new Uint8Array(
 const t0 = performance.now();
 const { instance } = await WebAssembly.instantiate(wasmBytes, { env });
 const w = instance.exports; mem = w.memory;
+// PPC=1 benches Cythera's PowerPC slice instead of its 68K one.
+if (process.env.PPC === '1') w.cw_prefer_powerpc(1);
 w.cw_init();
 console.log(`instantiated in ${(performance.now() - t0).toFixed(0)} ms, module ${wasmBytes.length} bytes`);
 const game = readFileSync(archivePath);
