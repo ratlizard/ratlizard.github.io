@@ -17,7 +17,10 @@ const game = readFileSync(archivePath);
 // for the desktop runner. Said before cw_load, which is where the executable
 // is chosen.
 if (process.env.PPC === '1') w.cw_prefer_powerpc(1);
-if (w.cw_load(alloc(game), game.length, Math.floor(Date.now()/1000) + 2082844800, 800, 600) !== 0) process.exit(1);
+// SIZE=WxH asks for a guest screen other than 800x600 -- the page asks for a
+// tall one in portrait on a phone, which 800x600 never exercises.
+const [SW, SH] = (process.env.SIZE || '800x600').split('x').map(Number);
+if (w.cw_load(alloc(game), game.length, Math.floor(Date.now()/1000) + 2082844800, SW, SH) !== 0) process.exit(1);
 // Import every desktop-store folder under the save dir (each holds
 // metadata.json and the two forks), so the disk looks as it did to the game.
 import { readdirSync, statSync, existsSync } from 'node:fs';

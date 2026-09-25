@@ -167,6 +167,18 @@ pub extern "C" fn cw_load(
             .then(|| (width.min(4096) as u16, height.min(4096) as u16)),
         ..FixtureRunnerConfig::default()
     };
+    // The PowerPC loader takes the guest's screen from the machine profile,
+    // which the desktop sets with SYSTEMLESS_SCREEN_WIDTH and which this host
+    // cannot; setting it on the runner alone left the profile at its default
+    // 800 and the guest drew 800-wide rows into a 640-wide framebuffer, which
+    // is horizontal hash across the whole screen. The 68K path takes the
+    // runner's, so it never showed this.
+    if width > 0 && height > 0 {
+        systemless::machine_profile::set_reference_screen_size(
+            width.min(4096) as u16,
+            height.min(4096) as u16,
+        );
+    }
     let mut runner = FixtureRunner::new(game::RAM_SIZE as usize, config);
     runner.set_prefer_powerpc_executables(PREFER_POWERPC.with(|p| p.get()));
     runner.set_app_start_time(mac_epoch_secs);
