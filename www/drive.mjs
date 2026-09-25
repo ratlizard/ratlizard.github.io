@@ -13,6 +13,10 @@ const { instance } = await WebAssembly.instantiate(wasmBytes, { env });
 const w = instance.exports; mem = w.memory; w.cw_init();
 const alloc = u8 => { const p = w.cw_alloc(u8.length); new Uint8Array(mem.buffer, p, u8.length).set(u8); return p; };
 const game = readFileSync(archivePath);
+// PPC=1 launches Cythera's PowerPC slice, as SYSTEMLESS_PREFER_POWERPC=1 does
+// for the desktop runner. Said before cw_load, which is where the executable
+// is chosen.
+if (process.env.PPC === '1') w.cw_prefer_powerpc(1);
 if (w.cw_load(alloc(game), game.length, Math.floor(Date.now()/1000) + 2082844800, 800, 600) !== 0) process.exit(1);
 // Import every desktop-store folder under the save dir (each holds
 // metadata.json and the two forks), so the disk looks as it did to the game.

@@ -5,7 +5,7 @@
 //! memory. Everything lives in one thread-local `State`; WebAssembly on the
 //! web is single-threaded, so that is the whole synchronisation story.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use systemless::display::{self, DisplayGamma};
@@ -60,6 +60,10 @@ struct State {
 thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
     static ERROR: RefCell<String> = const { RefCell::new(String::new()) };
+    /// Which of the game's two slices to launch. The desktop runner reads
+    /// `SYSTEMLESS_PREFER_POWERPC`; `std::env` on `wasm32-unknown-unknown`
+    /// has nothing in it, so the page says instead, before `cw_load`.
+    static PREFER_POWERPC: Cell<bool> = const { Cell::new(false) };
 }
 
 fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> Option<R> {
@@ -79,6 +83,13 @@ pub extern "C" fn cw_init() {
         log(&msg);
         ERROR.with(|e| *e.borrow_mut() = msg);
     }));
+}
+
+/// Launch Cythera's PowerPC slice rather than its 68K one. Call before
+/// `cw_load`, which is where the executable is chosen. Nonzero turns it on.
+#[no_mangle]
+pub extern "C" fn cw_prefer_powerpc(on: i32) {
+    PREFER_POWERPC.with(|p| p.set(on != 0));
 }
 
 /// Allocate `len` bytes the page can fill (the game archive).
@@ -157,6 +168,7 @@ pub extern "C" fn cw_load(
         ..FixtureRunnerConfig::default()
     };
     let mut runner = FixtureRunner::new(game::RAM_SIZE as usize, config);
+    runner.set_prefer_powerpc_executables(PREFER_POWERPC.with(|p| p.get()));
     runner.set_app_start_time(mac_epoch_secs);
     runner.set_instructions_per_tick(
         systemless::runner::default_realtime_instructions_per_tick(false),
@@ -710,6 +722,24 @@ pub extern "C" fn cw_tune_count() -> u32 {
 
 /// One line on the guest's sound path (channels, commands, component
 /// instances, tune players); valid until the next call into the module.
+/// Why the guest stopped, in words, where the runner has more to say than
+/// `cw_running` does -- a PowerPC import nothing implements, which on the
+/// desktop goes to stderr and here would be a frozen window. Empty when
+/// there is nothing to add.
+#[no_mangle]
+pub extern "C" fn cw_halt_reason() -> *const u8 {
+    with_state(|s| {
+        s.debug = s.runner.halted_reason().unwrap_or_default().to_string();
+        s.debug.as_ptr()
+    })
+    .unwrap_or(std::ptr::null())
+}
+
+#[no_mangle]
+pub extern "C" fn cw_halt_reason_len() -> usize {
+    with_state(|s| s.runner.halted_reason().map_or(0, str::len)).unwrap_or(0)
+}
+
 #[no_mangle]
 pub extern "C" fn cw_audio_debug() -> *const u8 {
     with_state(|s| {

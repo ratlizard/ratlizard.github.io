@@ -443,9 +443,19 @@ function chooseScreen() {
   if (vh >= vw) return [640, Math.min(2048, Math.max(480, Math.round(640 * vh / vw)))];
   return [Math.min(2048, Math.max(640, Math.round(480 * vw / vh))), 480];
 }
+const POWERPC = new URLSearchParams(location.search).get('ppc') === '1';
 let booted = false, W = 0, H = 0, canvas = document.getElementById('screen'), ctx = canvas.getContext('2d');
 let bootPromise = null;
 function boot() { return bootPromise || (bootPromise = bootOnce().catch(e => { bootPromise = null; throw e; })); }
+// What the desktop runner prints to stderr when the PowerPC slice reaches an
+// import nothing implements. There is no stderr here, and without this a halt
+// is a window that stops repainting with nothing said.
+function haltReason() {
+  const len = wasm.cw_halt_reason_len();
+  if (!len) return '';
+  const ptr = wasm.cw_halt_reason(); // takes a copy, so the buffer is read after
+  return ': ' + dec.decode(new Uint8Array(mem.buffer, ptr, len));
+}
 async function bootOnce() {
   await wasmReady;
   statEl.textContent = 'fetching the game…';
@@ -459,6 +469,11 @@ async function bootOnce() {
   noteHeap();
   const t0 = performance.now();
   const [sw, sh] = chooseScreen();
+  // Cythera ships both slices in one application. 68K is what this page has
+  // always run; ?ppc=1 launches the PowerPC one instead, which the fork
+  // draws through Cythera's own window and control definitions. The choice
+  // is made inside cw_load, so it is said before it.
+  if (POWERPC) { wasm.cw_prefer_powerpc(1); say('launching the PowerPC slice'); }
   const rc = wasm.cw_load(p, bytes.length, Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET, sw, sh);
   if (rc !== 0) throw new Error(dec.decode(new Uint8Array(mem.buffer, wasm.cw_error_ptr(), wasm.cw_error_len())));
   noteHeap();
@@ -1341,7 +1356,7 @@ document.getElementById('bench').onclick = () => boot().then(() => { mode = 'ben
     const t = performance.now();
     while (done < target && performance.now() - t < 40) {
       done += wasm.cw_run_headless(chunk);
-      if (!wasm.cw_running()) { say('guest halted'); mode = null; break; }
+      if (!wasm.cw_running()) { say(`guest halted${haltReason()}`); mode = null; break; }
     }
     present();
     const now = performance.now(), secs = (now - t0) / 1000;
@@ -1823,7 +1838,7 @@ function play() {
     const guestFrom = performance.now();
     while (wasm.cw_tick() < deadline && steps < MAX_STEPS && performance.now() - now < budget) {
       steps += wasm.cw_run(Math.min(SLICE, MAX_STEPS - steps), deadline, 0);
-      if (!wasm.cw_running()) { say('guest halted'); mode = null; break; }
+      if (!wasm.cw_running()) { say(`guest halted${haltReason()}`); mode = null; break; }
     }
     const guestMs = performance.now() - guestFrom;
     // Mix this frame's audio whether or not the CPU ran: a guest already at
