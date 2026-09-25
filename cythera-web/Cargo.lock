@@ -337,9 +337,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "m68k"
-version = "0.13.0"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e614e34e0fe46c6b8d6e9e8b778eb6bc6ff1e0ffafabcb8243f2bd2c9f5b29"
+checksum = "d147b9f460ceae5beb0ee82c186f70f15dd15e1de317187b7f018eff139626a9"
 
 [[package]]
 name = "md5"
@@ -571,9 +571,9 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "stuffit"
-version = "0.1.8"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bcc178cee8780b1fc08c1ae349100139a428dd4fe4f0452bc5506bac9148f47"
+checksum = "c27d301aaa118887b3aa1af4aa881d18e8875441ccb58ba338344a7cc8fd9c72"
 dependencies = [
  "clap",
  "encoding_rs",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "systemless"
-version = "0.41.12"
+version = "0.50.0"
 dependencies = [
  "clap",
  "flate2",
