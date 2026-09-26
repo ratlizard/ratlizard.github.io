@@ -30,6 +30,8 @@ type Fingerprint = (usize, usize, u64, u64, u32, u32, u16, u32);
 struct State {
     runner: FixtureRunner,
     frame: Vec<u8>,
+    /// The palette index of each screen pixel, answered by `cw_render_indices`.
+    indices: Vec<u8>,
     audio: Vec<u8>,
     mouse: (i16, i16),
     width: u16,
@@ -204,6 +206,7 @@ pub extern "C" fn cw_load(
         *s.borrow_mut() = Some(State {
             runner,
             frame,
+            indices: Vec::new(),
             audio: Vec::new(),
             mouse: (0, 0),
             width,
@@ -647,6 +650,32 @@ pub extern "C" fn cw_render() -> *const u8 {
             }
         }
         frame.as_ptr()
+    })
+    .unwrap_or(std::ptr::null())
+}
+
+/// The palette index of every screen pixel, `cw_width() * cw_height()` bytes
+/// in the same order as `cw_render`'s frame, for the page's undither filter:
+/// it leaves alone the colours the game animates, which it can only tell by
+/// index. Null unless the screen is 8 bits deep and the size the page has.
+/// Valid until the next call into the module.
+#[no_mangle]
+pub extern "C" fn cw_render_indices() -> *const u8 {
+    with_state(|s| {
+        let (base, row_bytes, w, h, depth) = s.runner.dispatcher().screen_mode;
+        if depth != 8 || w == 0 || (w, h) != (s.width, s.height) || row_bytes < u32::from(w) {
+            return std::ptr::null();
+        }
+        let len = row_bytes * u32::from(h);
+        if u64::from(base) + u64::from(len) > u64::from(s.runner.bus().ram_size()) {
+            return std::ptr::null();
+        }
+        let screen = s.runner.bus().ram_slice(base, len);
+        s.indices.clear();
+        for row in screen.chunks_exact(row_bytes as usize) {
+            s.indices.extend_from_slice(&row[..usize::from(w)]);
+        }
+        s.indices.as_ptr()
     })
     .unwrap_or(std::ptr::null())
 }

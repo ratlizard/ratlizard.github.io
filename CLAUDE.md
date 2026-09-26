@@ -111,7 +111,9 @@ Magpie patch route; `load_timing` times a save load call by call;
 `layout_probe` drives the real page in headless Chrome at phone sizes and
 fails if anything is off the screen — every layout fault this page has had was
 a number guessed at rather than measured, and none of them is visible in the
-source. **Run them all after touching the page or the
+source; `undither_probe` runs the Undither button's filter in headless Chrome
+and compares its output with grimoire's own `undither()`, which it reads from
+the grimoire checkout beside this repository. **Run them all after touching the page or the
 module.** Two things the page does that are easy to break and easy to miss:
 it holds a silent looping media element open, because iOS mutes a page that
 uses only Web Audio; and it runs the guest unpaced while the screen is black

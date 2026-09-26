@@ -31,6 +31,7 @@
   #bar button:hover:not(:disabled), #bar .linkbtn:hover { background: #2d2d2d; border-color: #4c4c4c; }
   #bar button:active:not(:disabled) { background: #383838; }
   #bar button:disabled { opacity: .38; cursor: default; }
+  #bar button[aria-pressed="true"] { background: #2f3f55; border-color: #4a6a90; color: #eef3fa; }
   #bar button:focus-visible, #bar .linkbtn:focus-visible { outline: 2px solid #6a8fd0; outline-offset: 1px; }
   /* Start is the one thing to press on an empty page, so it is the one
      control that is coloured, and it goes once the game is running. */
@@ -160,6 +161,7 @@
   <button id="cheatbtn" disabled>Cheats</button>
   <button id="musicbtn" disabled>Music</button>
   <button id="patchbtn" disabled>Patches</button>
+  <button id="undither" title="Smooth the dithering in the game's pictures">Undither</button>
   <button id="logbtn">Log</button>
   <button id="bench" disabled class="desktop-only">Benchmark</button>
   <label class="desktop-only"><input type="file" id="file"> pick a .sit</label>
@@ -1333,14 +1335,266 @@ document.getElementById('importfile').addEventListener('change', async e => {
     if (recs.length > 1 || left.length) note.textContent = `imported ${recs.length} from ${f.name}` + (left.length ? `, left out ${left.length}` : '');
   } catch (err) { say('import failed: ' + err.message); note.textContent = 'import failed: ' + err.message; }
 });
+// --- undither -----------------------------------------------------------------
+/* grimoire's undither filter (js/delv-graphics.js, `UD`) on the live screen,
+   for the art Ambrosia dithered down to 256 colours. Off unless the Undither
+   button is on; the choice is remembered in this browser.
+
+   grimoire's own implementation is written for one still picture and costs
+   5.8 seconds for a 640x480 frame, so this is the GPU version the retired
+   mobile shell carried (alchemy's mobile/mobile.html, checked against grimoire
+   by its mobile_undither_check.mjs): the same settings and the same detector,
+   as three full-screen passes --
+
+     1  mean    a 3x3 box mean of the frame
+     2  detect  how dithered each pixel is, and the checkerboard-notch blend
+     3  detail  re-sharpen what the blend softened
+
+   Two of grimoire's stages are left out, as they were there: stray-colour
+   repair, which mends quantisation accidents in the artwork that a live
+   screen does not have, and the 2x supersample, not worth a frame's time on a
+   screen that is being scaled anyway.
+
+   One thing is added. grimoire leaves the colours the game animates (palette
+   indices 0xE0 to 0xFB, `isAnimatedIndex`) untouched; the mobile shell only
+   had RGB and could not. This page asks the module for each pixel's index
+   (`cw_render_indices`) and gives those pixels no blend, as grimoire does.
+
+   The filter draws into a WebGL canvas of its own that is never shown; the
+   result is copied onto the page's 2D canvas, so the canvas the page lays out
+   and takes input on is the same one either way. Without WebGL the button
+   says so in the log and the screen is shown as the game draws it: a display
+   filter must not be able to stop the game. */
+const UNDITHER = { sens: 0.67, strength: 0.67, detail: 0.5 };
+let unditherGL = null, unditherOn = false;
+try { unditherOn = localStorage.getItem('undither') === '1'; } catch (e) {}
+
+function makeUndither() {
+  const glCanvas = document.createElement('canvas');
+  const gl = glCanvas.getContext('webgl', { alpha: false, antialias: false, depth: false, preserveDrawingBuffer: true });
+  if (!gl) return null;
+  const VS = `attribute vec2 a_position; varying vec2 v_texCoord;
+    void main() { v_texCoord = a_position * 0.5 + 0.5; gl_Position = vec4(a_position, 0.0, 1.0); }`;
+  // An out-of-range neighbour is left out of the count, as grimoire does,
+  // rather than repeated by CLAMP_TO_EDGE.
+  const INSIDE = `bool inside(vec2 uv) { return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0; }`;
+  const FS_MEAN = `precision highp float;
+    varying vec2 v_texCoord; uniform sampler2D u_src; uniform vec2 u_texSize;
+    ${INSIDE}
+    void main() {
+      vec2 px = 1.0 / u_texSize; vec3 sum = vec3(0.0); float cnt = 0.0;
+      for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        vec2 uv = v_texCoord + vec2(float(dx), float(dy)) * px;
+        if (!inside(uv)) continue;
+        sum += texture2D(u_src, uv).rgb; cnt += 1.0;
+      }
+      gl_FragColor = vec4(sum / cnt, 1.0);
+    }`;
+  /* A dither alternates against its neighbours along a line through it; a
+     drawn edge agrees with them. The residual is a pixel less its own
+     neighbourhood's mean, and the detector compares residuals along both
+     axes, three pixels each way (grimoire's LINE_REACH). */
+  const FS_DETECT = `precision highp float;
+    varying vec2 v_texCoord;
+    uniform sampler2D u_src; uniform sampler2D u_mean; uniform sampler2D u_idx;
+    uniform vec2 u_texSize; uniform float u_sens; uniform float u_strength; uniform float u_useIdx;
+    ${INSIDE}
+    vec3 srcAt(vec2 uv) { return texture2D(u_src, uv).rgb * 255.0; }
+    vec3 resAt(vec2 uv) { return (texture2D(u_src, uv).rgb - texture2D(u_mean, uv).rgb) * 255.0; }
+    void main() {
+      vec2 px = 1.0 / u_texSize;
+      vec3 c = srcAt(v_texCoord);
+      vec3 r0 = resAt(v_texCoord);
+      float m = length(r0);
+      float d = 0.0;
+      if (m >= 0.5) {
+        float best = -2.0;
+        for (int a = 0; a < 2; a++) {
+          vec2 ax = a == 0 ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+          float sum = 0.0, cnt = 0.0;
+          for (int k = 1; k <= 3; k++) for (int sg = 0; sg < 2; sg++) {
+            vec2 uv = v_texCoord + ax * float(k) * (sg == 0 ? -1.0 : 1.0) * px;
+            if (!inside(uv)) continue;
+            cnt += 1.0;
+            vec3 rj = resAt(uv); float mj = length(rj);
+            if (mj < 0.5) continue;      // a flat neighbour votes neutral
+            sum += dot(r0, rj) / (m * mj);
+          }
+          if (cnt > 0.0) best = max(best, sum / cnt);
+        }
+        float coh = best < -1.0 ? 1.0 : best;
+        d = clamp((u_sens - coh) * 8.0, 0.0, 1.0) * smoothstep(1.5, 5.0, m);
+      }
+      // A pixel whose whole neighbourhood is its own colour has nothing to undither.
+      bool uniformArea = true;
+      for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        if (dx == 0 && dy == 0) continue;
+        vec2 uv = v_texCoord + vec2(float(dx), float(dy)) * px;
+        if (inside(uv) && srcAt(uv) != c) uniformArea = false;
+      }
+      if (uniformArea) d = 0.0;
+      // The colours the game animates are left alone.
+      if (u_useIdx > 0.5) {
+        float idx = floor(texture2D(u_idx, v_texCoord).r * 255.0 + 0.5);
+        if (idx >= 224.0 && idx < 252.0) d = 0.0;
+      }
+      // The checkerboard notch: half the pixel, half its four orthogonal neighbours.
+      vec3 n4 = vec3(0.0); float n4cnt = 0.0;
+      for (int e = 0; e < 4; e++) {
+        vec2 off = e == 0 ? vec2(px.x, 0.0) : e == 1 ? vec2(-px.x, 0.0) : e == 2 ? vec2(0.0, px.y) : vec2(0.0, -px.y);
+        vec2 uv = v_texCoord + off;
+        if (!inside(uv)) continue;
+        n4 += srcAt(uv); n4cnt += 1.0;
+      }
+      vec3 filt = n4cnt > 0.0 ? 0.5 * c + 0.5 * (n4 / n4cnt) : c;
+      gl_FragColor = vec4((c + d * u_strength * (filt - c)) / 255.0, d);   // d rides along for pass 3
+    }`;
+  const FS_DETAIL = `precision highp float;
+    varying vec2 v_texCoord; uniform sampler2D u_res;
+    uniform vec2 u_texSize; uniform float u_strength; uniform float u_detail;
+    ${INSIDE}
+    void main() {
+      vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);   // the frame arrived top row first
+      vec2 px = 1.0 / u_texSize;
+      vec4 self = texture2D(u_res, uv);
+      vec3 sum = vec3(0.0); float cnt = 0.0;
+      for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        vec2 t = uv + vec2(float(dx), float(dy)) * px;
+        if (!inside(t)) continue;
+        sum += texture2D(u_res, t).rgb; cnt += 1.0;
+      }
+      float w = self.a * u_strength * u_detail;
+      gl_FragColor = vec4(self.rgb + w * (self.rgb - sum / cnt), 1.0);
+    }`;
+  try {
+    const compile = (type, source) => {
+      const sh = gl.createShader(type); gl.shaderSource(sh, source); gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh) || 'shader compile failed');
+      return sh;
+    };
+    const link = fs => {
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+      gl.bindAttribLocation(prog, 0, 'a_position'); gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'program link failed');
+      return prog;
+    };
+    const progMean = link(FS_MEAN), progDetect = link(FS_DETECT), progDetail = link(FS_DETAIL);
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    const texture = () => {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    // Residuals are small numbers and eight bits quantise the mean onto the
+    // faint end of the detector's ramp, so half floats where they can be
+    // rendered to, eight bits where they cannot.
+    gl.getExtension('OES_texture_half_float_linear');
+    const half = gl.getExtension('OES_texture_half_float');
+    let fboType = half ? half.HALF_FLOAT_OES : gl.UNSIGNED_BYTE;
+    const texSrc = texture(), texIdx = texture();
+    let texMean = texture(), texRes = texture();
+    const fboMean = gl.createFramebuffer(), fboRes = gl.createFramebuffer();
+    let w = 0, h = 0;
+    const allocate = () => {
+      for (const [t, f] of [[texMean, fboMean], [texRes, fboRes]]) {
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, fboType, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      }
+    };
+    const resize = (nw, nh) => {
+      w = nw; h = nh; glCanvas.width = w; glCanvas.height = h;
+      allocate();
+      // Some drivers advertise half floats and will not render to them;
+      // asking is the only way to find out.
+      if (fboType !== gl.UNSIGNED_BYTE && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        fboType = gl.UNSIGNED_BYTE;
+        gl.deleteTexture(texMean); gl.deleteTexture(texRes);
+        texMean = texture(); texRes = texture(); allocate();
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      for (const [prog, u] of [[progMean, {}], [progDetect, { u_sens: UNDITHER.sens, u_strength: UNDITHER.strength }],
+                               [progDetail, { u_strength: UNDITHER.strength, u_detail: UNDITHER.detail }]]) {
+        gl.useProgram(prog);
+        gl.uniform2f(gl.getUniformLocation(prog, 'u_texSize'), w, h);
+        for (const name in u) gl.uniform1f(gl.getUniformLocation(prog, name), u[name]);
+      }
+    };
+    const pass = (prog, fbo, inputs) => {
+      gl.useProgram(prog); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      inputs.forEach(([name, t], unit) => {
+        gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.uniform1i(gl.getUniformLocation(prog, name), unit);
+      });
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    };
+    let useIdx = false;
+    return {
+      canvas: glCanvas,
+      // The indices are taken first: asking the module for them can grow its
+      // memory, which would leave a view already taken on the frame empty.
+      indices(idx, nw, nh) {
+        if (nw !== w || nh !== h) resize(nw, nh);
+        useIdx = !!idx;
+        if (!idx) return;
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.bindTexture(gl.TEXTURE_2D, texIdx);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, w, h, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, idx);
+      },
+      draw(px) {
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+        gl.bindTexture(gl.TEXTURE_2D, texSrc);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        gl.viewport(0, 0, w, h);
+        pass(progMean, fboMean, [['u_src', texSrc]]);
+        gl.useProgram(progDetect); gl.uniform1f(gl.getUniformLocation(progDetect, 'u_useIdx'), useIdx ? 1 : 0);
+        pass(progDetect, fboRes, [['u_src', texSrc], ['u_mean', texMean], ['u_idx', texIdx]]);
+        pass(progDetail, null, [['u_res', texRes]]);
+      },
+    };
+  } catch (err) {
+    say('undither: ' + (err && err.message));
+    return null;
+  }
+}
+const unditherBtn = document.getElementById('undither');
+function setUndither(on) {
+  if (on && !unditherGL) {
+    unditherGL = makeUndither();
+    if (!unditherGL) { say('undither: WebGL is not available here, so the screen is shown as the game draws it'); on = false; }
+  }
+  unditherOn = on;
+  unditherBtn.setAttribute('aria-pressed', String(on));
+  try { localStorage.setItem('undither', on ? '1' : '0'); } catch (e) {}
+}
+unditherBtn.onclick = () => setUndither(!unditherOn);
+unditherBtn.setAttribute('aria-pressed', 'false');
+if (unditherOn) setUndither(true);
+
 // How much of the screen is lit, sampled rather than counted in full so it
 // can be taken on every frame that is drawn. Cythera draws nothing at all
 // while it loads a save, and nothing else it does leaves the screen black.
 let screenLit = 1;
 function present() {
+  if (unditherOn && unditherGL) {
+    const ip = wasm.cw_render_indices ? wasm.cw_render_indices() : 0;
+    unditherGL.indices(ip ? new Uint8Array(mem.buffer, ip, W * H) : null, W, H);
+  }
   const p = wasm.cw_render();
   const px = new Uint8ClampedArray(mem.buffer, p, W * H * 4);
-  ctx.putImageData(new ImageData(px, W, H), 0, 0);
+  if (unditherOn && unditherGL) {
+    unditherGL.draw(new Uint8Array(mem.buffer, p, W * H * 4));
+    ctx.drawImage(unditherGL.canvas, 0, 0);
+  } else ctx.putImageData(new ImageData(px, W, H), 0, 0);
   let lit = 0, seen = 0;
   for (let i = 0; i < W * H; i += 197, seen++) if (px[i * 4] | px[i * 4 + 1] | px[i * 4 + 2]) lit++;
   screenLit = lit / (seen || 1);
