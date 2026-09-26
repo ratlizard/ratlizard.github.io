@@ -425,9 +425,9 @@ dependencies = [
 
 [[package]]
 name = "ppc"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7c5c4292028319c27ac5460bc1327aedb65d4909240edfac02aaf0ac7d52bfe"
+checksum = "427a10eb1bb49971b89718513ec8dbb067eeceab54bc79622d8c8bf0c85fa78c"
 dependencies = [
  "ieee-apsqrt",
  "rustc_apfloat",
@@ -571,9 +571,9 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "stuffit"
-version = "0.2.3"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c27d301aaa118887b3aa1af4aa881d18e8875441ccb58ba338344a7cc8fd9c72"
+checksum = "0dab69d839a9fd5f607113721fdd0a4b6522992823a5fb8a8600428af6dc9ff3"
 dependencies = [
  "clap",
  "encoding_rs",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "systemless"
-version = "0.50.0"
+version = "0.62.0"
 dependencies = [
  "clap",
  "flate2",
