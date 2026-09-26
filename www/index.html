@@ -1350,11 +1350,15 @@ document.getElementById('importfile').addEventListener('change', async e => {
      1  mean    a 3x3 box mean of the frame
      2  detect  how dithered each pixel is, and the checkerboard-notch blend
      3  detail  re-sharpen what the blend softened
+     4  super   grimoire's 2x structure-guided upscale, averaged straight back
+                down to one pixel, which is where most of its smoothing on a
+                portrait comes from: the four sub-samples fall between palette
+                colours, so a two-tone dithered ramp becomes a gradient
 
-   Two of grimoire's stages are left out, as they were there: stray-colour
-   repair, which mends quantisation accidents in the artwork that a live
-   screen does not have, and the 2x supersample, not worth a frame's time on a
-   screen that is being scaled anyway.
+   The mobile shell stopped after the third, and on a portrait that left most
+   of the dither in place. Stray-colour repair is still left out: it mends
+   quantisation accidents in a picture, and on the live screen it scatters
+   specks over the conversation window's patterned background.
 
    One thing is added. grimoire leaves the colours the game animates (palette
    indices 0xE0 to 0xFB, `isAnimatedIndex`) untouched; the mobile shell only
@@ -1366,7 +1370,7 @@ document.getElementById('importfile').addEventListener('change', async e => {
    and takes input on is the same one either way. Without WebGL the button
    says so in the log and the screen is shown as the game draws it: a display
    filter must not be able to stop the game. */
-const UNDITHER = { sens: 0.67, strength: 0.67, detail: 0.5 };
+const UNDITHER = { sens: 0.67, strength: 0.67, detail: 0.5, edge: 64 };
 let unditherGL = null, unditherOn = false;
 try { unditherOn = localStorage.getItem('undither') === '1'; } catch (e) {}
 
@@ -1455,7 +1459,7 @@ function makeUndither() {
     uniform vec2 u_texSize; uniform float u_strength; uniform float u_detail;
     ${INSIDE}
     void main() {
-      vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);   // the frame arrived top row first
+      vec2 uv = v_texCoord;
       vec2 px = 1.0 / u_texSize;
       vec4 self = texture2D(u_res, uv);
       vec3 sum = vec3(0.0); float cnt = 0.0;
@@ -1465,7 +1469,50 @@ function makeUndither() {
         sum += texture2D(u_res, t).rgb; cnt += 1.0;
       }
       float w = self.a * u_strength * u_detail;
-      gl_FragColor = vec4(self.rgb + w * (self.rgb - sum / cnt), 1.0);
+      gl_FragColor = vec4(self.rgb + w * (self.rgb - sum / cnt), self.a);   // d rides along for pass 4
+    }`;
+  /* grimoire's guidedUpscale at 2x and the supersample that follows it, done
+     per output pixel: each of its four sub-samples, a quarter pixel off
+     centre each way, is a 3x3 average weighted by distance and by colour
+     difference (the edge threshold), never across the lock's boundary; the
+     four are averaged, and the result is pulled back toward the pixel before
+     this pass by 1 - d * strength, which is grimoire's restore -- a pixel the
+     detector left alone comes out exactly as it went in. */
+  const FS_SUPER = `precision highp float;
+    varying vec2 v_texCoord; uniform sampler2D u_det; uniform sampler2D u_idx;
+    uniform vec2 u_texSize; uniform float u_strength; uniform float u_edge; uniform float u_useIdx;
+    ${INSIDE}
+    float lockedAt(vec2 uv) {
+      if (u_useIdx < 0.5) return 0.0;
+      float idx = floor(texture2D(u_idx, uv).r * 255.0 + 0.5);
+      return (idx >= 224.0 && idx < 252.0) ? 1.0 : 0.0;
+    }
+    void main() {
+      vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);   // the frame arrived top row first
+      vec2 px = 1.0 / u_texSize;
+      vec4 self = texture2D(u_det, uv);
+      vec3 c = self.rgb * 255.0;
+      float baseLock = lockedAt(uv);
+      float invSr = 1.0 / (2.0 * u_edge * u_edge);
+      vec3 up = vec3(0.0);
+      for (int s = 0; s < 4; s++) {
+        vec2 off = vec2(s == 0 || s == 2 ? -0.25 : 0.25, s < 2 ? -0.25 : 0.25);
+        vec3 acc = vec3(0.0); float wsum = 0.0;
+        for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+          vec2 t = uv + vec2(float(dx), float(dy)) * px;
+          if (!inside(t)) continue;
+          if (lockedAt(t) != baseLock) continue;   // never blend across structure
+          vec3 n = texture2D(u_det, t).rgb * 255.0;
+          vec2 sd = vec2(float(dx), float(dy)) - off;
+          vec3 dc = n - c;
+          float w = exp(-dot(sd, sd) * 2.0) * exp(-dot(dc, dc) * invSr);
+          acc += n * w; wsum += w;
+        }
+        up += wsum > 0.0 ? acc / wsum : c;
+      }
+      up *= 0.25;
+      float w = min(1.0, self.a * u_strength);
+      gl_FragColor = vec4((up + (1.0 - w) * (c - up)) / 255.0, 1.0);
     }`;
   try {
     const compile = (type, source) => {
@@ -1481,7 +1528,7 @@ function makeUndither() {
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'program link failed');
       return prog;
     };
-    const progMean = link(FS_MEAN), progDetect = link(FS_DETECT), progDetail = link(FS_DETAIL);
+    const progMean = link(FS_MEAN), progDetect = link(FS_DETECT), progDetail = link(FS_DETAIL), progSuper = link(FS_SUPER);
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
@@ -1501,11 +1548,11 @@ function makeUndither() {
     const half = gl.getExtension('OES_texture_half_float');
     let fboType = half ? half.HALF_FLOAT_OES : gl.UNSIGNED_BYTE;
     const texSrc = texture(), texIdx = texture();
-    let texMean = texture(), texRes = texture();
-    const fboMean = gl.createFramebuffer(), fboRes = gl.createFramebuffer();
+    let texMean = texture(), texRes = texture(), texDet = texture();
+    const fboMean = gl.createFramebuffer(), fboRes = gl.createFramebuffer(), fboDet = gl.createFramebuffer();
     let w = 0, h = 0;
     const allocate = () => {
-      for (const [t, f] of [[texMean, fboMean], [texRes, fboRes]]) {
+      for (const [t, f] of [[texMean, fboMean], [texRes, fboRes], [texDet, fboDet]]) {
         gl.bindTexture(gl.TEXTURE_2D, t);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, fboType, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, f);
@@ -1519,12 +1566,13 @@ function makeUndither() {
       // asking is the only way to find out.
       if (fboType !== gl.UNSIGNED_BYTE && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
         fboType = gl.UNSIGNED_BYTE;
-        gl.deleteTexture(texMean); gl.deleteTexture(texRes);
-        texMean = texture(); texRes = texture(); allocate();
+        gl.deleteTexture(texMean); gl.deleteTexture(texRes); gl.deleteTexture(texDet);
+        texMean = texture(); texRes = texture(); texDet = texture(); allocate();
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       for (const [prog, u] of [[progMean, {}], [progDetect, { u_sens: UNDITHER.sens, u_strength: UNDITHER.strength }],
-                               [progDetail, { u_strength: UNDITHER.strength, u_detail: UNDITHER.detail }]]) {
+                               [progDetail, { u_strength: UNDITHER.strength, u_detail: UNDITHER.detail }],
+                               [progSuper, { u_strength: UNDITHER.strength, u_edge: UNDITHER.edge }]]) {
         gl.useProgram(prog);
         gl.uniform2f(gl.getUniformLocation(prog, 'u_texSize'), w, h);
         for (const name in u) gl.uniform1f(gl.getUniformLocation(prog, name), u[name]);
@@ -1559,7 +1607,9 @@ function makeUndither() {
         pass(progMean, fboMean, [['u_src', texSrc]]);
         gl.useProgram(progDetect); gl.uniform1f(gl.getUniformLocation(progDetect, 'u_useIdx'), useIdx ? 1 : 0);
         pass(progDetect, fboRes, [['u_src', texSrc], ['u_mean', texMean], ['u_idx', texIdx]]);
-        pass(progDetail, null, [['u_res', texRes]]);
+        pass(progDetail, fboDet, [['u_res', texRes]]);
+        gl.useProgram(progSuper); gl.uniform1f(gl.getUniformLocation(progSuper, 'u_useIdx'), useIdx ? 1 : 0);
+        pass(progSuper, null, [['u_det', texDet], ['u_idx', texIdx]]);
       },
     };
   } catch (err) {

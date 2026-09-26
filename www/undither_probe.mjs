@@ -2,9 +2,8 @@
 // page in headless Chrome, lets the game reach its start board, and puts one
 // frame through three things: the page's WebGL filter, the same filter with
 // the lock on the game's animated colours taken off, and grimoire's own
-// undither() from js/delv-graphics.js run on the CPU with the two stages the
-// GPU version leaves out (stray-colour repair, the 2x supersample) switched
-// off. It fails if the filter changes nothing, if the GPU and grimoire
+// undither() from js/delv-graphics.js run on the CPU with the one stage the
+// GPU version leaves out, stray-colour repair, switched off. It fails if the filter changes nothing, if the GPU and grimoire
 // disagree by more than a rounding error, or if a pixel in an animated colour
 // is touched while the lock is on -- and it says whether the lock was put to
 // the test at all, which it is only if taking it off changes such a pixel.
@@ -135,29 +134,52 @@ const r = await run(`(() => {
   const locked = gpu(true), unlocked = gpu(false);
   const lockMask = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) lockMask[i] = idx[i] >= 0xE0 && idx[i] < 0xFC ? 1 : 0;
-  const P = Object.assign({}, __grimoire.UD, { stray: 0, upscale: 1, supersample: false, passes: 1 });
+  const P = Object.assign({}, __grimoire.UD, { stray: 0, passes: 1 });
   const ref = __grimoire.undither(new Uint8ClampedArray(raw), W, H, P, lockMask, null).out;
+  // The same without the 2x upscale and supersample: how far a filter that
+  // left that stage out would be from grimoire, by the same measure.
+  const P0 = Object.assign({}, P, { upscale: 1, supersample: false });
+  const ref0 = __grimoire.undither(new Uint8ClampedArray(raw), W, H, P0, lockMask, null).out;
+  let stageOver2 = 0;
+  for (let i = 0; i < W * H; i++) {
+    let m = 0; for (let c = 0; c < 3; c++) m = Math.max(m, Math.abs(ref0[i * 4 + c] - ref[i * 4 + c]));
+    if (m > 2) stageOver2++;
+  }
   const px = (a, i) => a[i * 4] !== raw[i * 4] || a[i * 4 + 1] !== raw[i * 4 + 1] || a[i * 4 + 2] !== raw[i * 4 + 2];
-  let changed = 0, animated = 0, animTouched = 0, animTouchedUnlocked = 0, sum = 0, worst = 0, refChanged = 0;
+  let changed = 0, animated = 0, animTouched = 0, animTouchedUnlocked = 0, sum = 0, worst = 0, refChanged = 0, over2 = 0, overAtEnds = 0;
   for (let i = 0; i < W * H; i++) {
     if (px(locked, i)) changed++;
     if (px(ref, i)) refChanged++;
     if (lockMask[i]) { animated++; if (px(locked, i)) animTouched++; if (px(unlocked, i)) animTouchedUnlocked++; }
-    for (let c = 0; c < 3; c++) { const d = Math.abs(locked[i * 4 + c] - ref[i * 4 + c]); sum += d; if (d > worst) worst = d; }
+    let pixWorst = 0, atEnd = false;
+    for (let c = 0; c < 3; c++) {
+      const d = Math.abs(locked[i * 4 + c] - ref[i * 4 + c]); sum += d; if (d > worst) worst = d;
+      if (d > pixWorst) { pixWorst = d; atEnd = ref[i * 4 + c] <= 3 || ref[i * 4 + c] >= 252 || locked[i * 4 + c] <= 3 || locked[i * 4 + c] >= 252; }
+    }
+    if (pixWorst > 2) { over2++; if (atEnd) overAtEnds++; }
   }
   const png = a => { rc.putImageData(new ImageData(new Uint8ClampedArray(a), W, H), 0, 0); return read.toDataURL('image/png'); };
   return { W, H, changed, refChanged, animated, animTouched, animTouchedUnlocked,
-           meanDiff: sum / (W * H * 3), worst, raw: png(raw), out: png(locked) };
+           meanDiff: sum / (W * H * 3), worst, over2, overAtEnds, stageOver2, raw: png(raw), out: png(locked) };
 })()`);
 
 if (r.noIndices) { fail('the module gives the palette indices', 'cw_render_indices answered null: the screen is not 8 bits deep, or not the page\'s size'); process.exit(1); }
 ok('the module gives the palette indices', `${r.W}x${r.H}`);
 if (!r.changed) fail('the filter changes the frame', 'not one pixel differs from the game\'s own');
 else ok('the filter changes the frame', `${r.changed} of ${r.W * r.H} pixels (grimoire's changes ${r.refChanged})`);
-// The mobile shell's port was measured against grimoire at 0.035 of 255 on
-// average and 1 at worst; allow a little for a software renderer's floats.
-if (r.meanDiff > 0.25 || r.worst > 3) fail('the GPU agrees with grimoire', `mean ${r.meanDiff.toFixed(3)}, worst ${r.worst} of 255`);
-else ok('the GPU agrees with grimoire', `mean |difference| ${r.meanDiff.toFixed(3)} of 255, worst ${r.worst}`);
+// Floats against doubles: near the detector's threshold a small difference in
+// a pixel's dither score moves its blend, and the supersample carries that a
+// little further, so a few pixels in a frame land a few levels apart (35 of
+// 307,200 by more than 2, worst 5, on 26 September). The bound is on how many,
+// not on the worst one; and it is only worth having if leaving a whole stage
+// out would break it, which the control below measures on the same frame.
+const limit = Math.ceil(r.W * r.H * 0.0005);
+if (r.meanDiff > 0.25 || r.over2 > limit)
+  fail('the GPU agrees with grimoire', `mean ${r.meanDiff.toFixed(3)}, ${r.over2} pixels more than 2 apart (limit ${limit}), worst ${r.worst}`);
+else ok('the GPU agrees with grimoire', `mean |difference| ${r.meanDiff.toFixed(3)} of 255, ${r.over2} pixels more than 2 apart, worst ${r.worst}`);
+if (r.stageOver2 <= limit * 4)
+  fail('the agreement check can fail', `grimoire without its supersample is only ${r.stageOver2} pixels from itself with it`);
+else ok('the agreement check can fail', `grimoire without its supersample is ${r.stageOver2} pixels more than 2 away`);
 if (r.animTouched) fail('animated colours are left alone', `${r.animTouched} of ${r.animated} changed`);
 else ok('animated colours are left alone', `${r.animated} such pixels, none changed`);
 if (r.animTouchedUnlocked) ok('the lock was tested', `without it ${r.animTouchedUnlocked} of them change`);
