@@ -78,7 +78,8 @@
   #logcopy { display: none; }
   body.showlog #logcopy { display: block; position: fixed; right: calc(10px + env(safe-area-inset-right)); bottom: calc(40dvh + 10px); z-index: 7;
     font: inherit; color: #ddd; background: #232323; border: 1px solid #3a3a3a; border-radius: 7px; padding: 5px 11px; -webkit-appearance: none; appearance: none; }
-  #stage { position: relative; }
+  #stage { position: relative; overflow: hidden; }
+  #screen { transform-origin: 0 0; }
   /* The touch shell: shown only where the pointer is a finger. Two pads over
      the bottom corners of the canvas; the game's control bar sits at the
      bottom of its screen, so the pads are translucent and can be dragged by
@@ -2146,15 +2147,122 @@ function mouseUpAt(v, h) {
   if (wait > 0) pendingUp = setTimeout(() => { pendingUp = null; wasm.cw_mouse_up(v, h); }, wait);
   else wasm.cw_mouse_up(v, h);
 }
-canvas.addEventListener('pointermove', e => { if (!booted) return; const [v, h] = guestPoint(e); wasm.cw_mouse_move(v, h); });
+/* Two fingers zoom and pan the screen; one finger is the game's mouse, as it
+   always was. The zoom is a transform on the canvas, clamped so the picture
+   never pulls away from the stage's edges, and guestPoint needs no change:
+   getBoundingClientRect already carries the transform, so a finger still lands
+   on the guest pixel under it. It goes back to fitting the stage when pinched
+   out, and whenever the stage changes size.
+
+   A finger used to press the guest's button the moment it landed, and the
+   first finger of a pinch would then be a click wherever it touched -- a walk,
+   a pick-up. So a finger waits PINCH_WAIT_MS for a second one before it
+   presses, and presses at once if it moves or lifts first: a tap is still a
+   click and a hold still a hold. A second finger that arrives after the press
+   has to let the button go where it was, which the game takes as a click; the
+   wait makes that the rare case. A mouse or a pen presses at once, as before.
+   The old mobile shell (alchemy's mobile/mobile.html) did the zoom arithmetic
+   the same way. */
+const PINCH_WAIT_MS = 80, PINCH_SLOP = 8;
+const fingers = new Map();       // touch pointers down on the canvas
+let pinch = null, pressId = null, pendingPress = null, spentFinger = null;
+const zoom = { s: 1, x: 0, y: 0 };
+function stageBox() {
+  // The canvas's own box before the transform: its layout position in the
+  // stage, measured from the stage's rectangle, which is not transformed.
+  const st = canvas.parentElement.getBoundingClientRect();
+  return { left: st.left + canvas.offsetLeft, top: st.top + canvas.offsetTop, w: canvas.offsetWidth, h: canvas.offsetHeight };
+}
+function zoomLimit() {
+  // As the mobile shell had it: up to two and a half screen points to a guest pixel.
+  const b = stageBox(), fit = Math.min(b.w / (W || 1), b.h / (H || 1)) || 1;
+  return Math.max(1, 2.5 / fit);
+}
+function applyZoom() {
+  const b = stageBox();
+  if (zoom.s <= 1.02) { zoom.s = 1; zoom.x = 0; zoom.y = 0; }
+  else {
+    zoom.x = Math.min(0, Math.max(b.w - b.w * zoom.s, zoom.x));
+    zoom.y = Math.min(0, Math.max(b.h - b.h * zoom.s, zoom.y));
+  }
+  canvas.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+}
+// Only a stage that has changed size resets it: the page holds the stage still
+// while the phone's keyboard is up, and typing should not lose the view.
+let zoomStage = '';
+function resetZoomIfResized() {
+  const b = stageBox(), key = b.w + 'x' + b.h;
+  if (key !== zoomStage) { zoomStage = key; zoom.s = 1; applyZoom(); }
+}
+window.addEventListener('resize', () => setTimeout(resetZoomIfResized, 0));
+function pinchState() {
+  const [a, b] = [...fingers.values()], box = stageBox();
+  return { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2 - box.left, cy: (a.y + b.y) / 2 - box.top };
+}
+function pressAt(e) {
+  if (pendingUp) { clearTimeout(pendingUp); pendingUp = null; const [pv, ph] = guestPoint(e); wasm.cw_mouse_up(pv, ph); }
+  const [v, h] = guestPoint(e); wasm.cw_mouse_move(v, h); wasm.cw_mouse_down(v, h); downAt = performance.now();
+  pressId = e.pointerId;
+}
+function commitPending() {
+  if (!pendingPress) return;
+  clearTimeout(pendingPress.timer);
+  const e = pendingPress.e; pendingPress = null;
+  pressAt(e);
+}
+canvas.addEventListener('pointermove', e => {
+  if (!booted) return;
+  if (fingers.has(e.pointerId)) {
+    fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch) {
+      const now = pinchState(), limit = zoomLimit();
+      const s = Math.min(limit, Math.max(1, pinch.s * now.d / pinch.d)), ratio = s / pinch.s;
+      zoom.s = s; zoom.x = now.cx - (pinch.cx - pinch.x) * ratio; zoom.y = now.cy - (pinch.cy - pinch.y) * ratio;
+      applyZoom();
+      return;
+    }
+    if (e.pointerId === spentFinger) return;
+    if (pendingPress && pendingPress.e.pointerId === e.pointerId &&
+        Math.hypot(e.clientX - pendingPress.e.clientX, e.clientY - pendingPress.e.clientY) > PINCH_SLOP) commitPending();
+  }
+  const [v, h] = guestPoint(e); wasm.cw_mouse_move(v, h);
+});
 canvas.addEventListener('pointerdown', e => {
   if (!booted) return;
   e.preventDefault(); canvas.setPointerCapture(e.pointerId);
-  if (pendingUp) { clearTimeout(pendingUp); pendingUp = null; const [pv, ph] = guestPoint(e); wasm.cw_mouse_up(pv, ph); }
-  const [v, h] = guestPoint(e); wasm.cw_mouse_move(v, h); wasm.cw_mouse_down(v, h); downAt = performance.now();
+  if (e.pointerType !== 'touch') { pressAt(e); return; }
+  fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (fingers.size === 1) {
+    spentFinger = null;
+    pendingPress = { e, timer: setTimeout(commitPending, PINCH_WAIT_MS) };
+    return;
+  }
+  if (fingers.size > 2 || pinch) return;
+  // A second finger: this is a pinch, not a press.
+  if (pendingPress) { clearTimeout(pendingPress.timer); pendingPress = null; }
+  if (pressId !== null) {
+    const held = [...fingers.entries()].find(([id]) => id === pressId);
+    const at = held ? { clientX: held[1].x, clientY: held[1].y } : e;
+    const [v, h] = guestPoint(at); mouseUpAt(v, h); pressId = null;
+  }
+  pinch = { ...pinchState(), s: zoom.s, x: zoom.x, y: zoom.y };
 });
-canvas.addEventListener('pointerup', e => { if (!booted) return; const [v, h] = guestPoint(e); mouseUpAt(v, h); });
-canvas.addEventListener('pointercancel', e => { if (!booted) return; const [v, h] = guestPoint(e); mouseUpAt(v, h); });
+function fingerUp(e) {
+  if (!booted) return;
+  if (e.pointerType !== 'touch') { const [v, h] = guestPoint(e); mouseUpAt(v, h); pressId = null; return; }
+  fingers.delete(e.pointerId);
+  if (pinch) {
+    // The finger left on the glass after a pinch neither presses nor moves
+    // the guest's pointer until it too is lifted.
+    if (fingers.size < 2) { pinch = null; spentFinger = fingers.keys().next().value ?? null; applyZoom(); }
+    return;
+  }
+  if (e.pointerId === spentFinger) { spentFinger = null; return; }
+  if (pendingPress && pendingPress.e.pointerId === e.pointerId) commitPending();
+  if (pressId === e.pointerId) { const [v, h] = guestPoint(e); mouseUpAt(v, h); pressId = null; }
+}
+canvas.addEventListener('pointerup', fingerUp);
+canvas.addEventListener('pointercancel', fingerUp);
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 // --- input: the touch shell. Every key it presses goes through heldKeys so
