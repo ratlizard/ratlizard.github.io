@@ -919,13 +919,22 @@ const DELV_CLEAR_RESID = new Set([0x0210]);
    scores zeros worse than the noise they would decrypt to, and a saved game's
    map memory and heap were being served as garbage. */
 const DELV_PLAYER_CLEAR_SUBN = new Set([129, 242]);
+/* The gremlins' subindex, 30 (0x1Fzz), the same way: ours, read out of the
+   executable, and absent from delvmod's table only because the shipped file
+   holds nothing there. A gremlin's script is a class the engine dispatches
+   to (`TGremlin::OnEnter` and `OnSignal` through `TInterp::Dispatch`), and
+   Dispatch fetches every class with `TCachedSegFiles::GetEncryptedSegment`,
+   which always passes it through `TSegFile::Decrypt`, keyed by the id. So a
+   0x1Fzz resource is encrypted, and one the gremlin maker writes is read
+   back as it was written rather than by a guess over a few dozen bytes. */
+const DELV_ENGINE_ENCRYPTED_SUBN = new Set([30]);
 
 function smartDecrypt(data, resid) {
   const subn = Math.floor(resid / 0x100) - 1;
   if (DELV_CLEAR_RESID.has(resid) || DELV_CLEAR_SUBN.has(subn) || DELV_PLAYER_CLEAR_SUBN.has(subn)) {
     return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, exempt: true, known: true };
   }
-  if (DELV_ENCRYPTED_SUBN.has(subn)) {
+  if (DELV_ENCRYPTED_SUBN.has(subn) || DELV_ENGINE_ENCRYPTED_SUBN.has(subn)) {
     return { data: decryptResource(data, resid), wasDecrypted: true, rawEntropy: 0, decEntropy: 0, known: true };
   }
   // Beyond here the archive is telling us nothing and neither is delvmod, so
