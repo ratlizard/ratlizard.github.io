@@ -1069,7 +1069,7 @@ async function applyPatches() {
       const m = mergeDelverPatch(bytes, r.bytes);
       bytes = m.bytes; applied++;
       say(`patch ${r.name}: ${m.replaced.length} resource(s) replaced` +
-          (m.skipped.length ? `, ${m.skipped.length} not in the archive` : '') +
+          (m.added.length ? `, ${m.added.length} added` : '') +
           (m.disagreed.length ? `, ${m.disagreed.length} refused` : ''));
     } catch (e) {
       say(`patch ${r.name} was not applied: ${e.message}`);
@@ -1083,6 +1083,10 @@ async function applyPatches() {
   return applied;
 }
 
+// What a patch does to the archive, in the list and the confirmation. A patch
+// stored before `added` existed has none.
+const patchChanges = (replaced, added) =>
+  `${replaced} resource(s) replaced` + (added ? `, ${added} added` : '');
 const patchPanel = document.getElementById('patchpanel'), patchTable = document.getElementById('patchtable');
 async function renderPatches() {
   let recs = [];
@@ -1090,8 +1094,8 @@ async function renderPatches() {
   document.getElementById('patchnote').textContent =
     recs.length ? `${recs.length} patch${recs.length > 1 ? 'es' : ''}, applied at every load` : 'the game is unpatched';
   patchTable.innerHTML = recs.length
-    ? '<tr><th>name</th><th>replaces</th><th>size</th><th></th></tr>' + recs.map((r, i) =>
-        `<tr><td>${r.name.replace(/</g, '&lt;')}</td><td>${r.replaced} resource(s)</td><td>${r.bytes.length.toLocaleString()} B</td><td><button data-i="${i}">Remove</button></td></tr>`).join('')
+    ? '<tr><th>name</th><th>changes</th><th>size</th><th></th></tr>' + recs.map((r, i) =>
+        `<tr><td>${r.name.replace(/</g, '&lt;')}</td><td>${patchChanges(r.replaced, r.added)}</td><td>${r.bytes.length.toLocaleString()} B</td><td><button data-i="${i}">Remove</button></td></tr>`).join('')
     : '';
   patchTable.onclick = async e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -1119,10 +1123,10 @@ document.getElementById('patchfile').onchange = async e => {
     const base = stageFile(path);
     if (!base) throw new Error('could not read ' + path);
     const m = mergeDelverPatch(base.data, unwrapped.bytes);
-    await putPatch({ name: unwrapped.name, bytes: unwrapped.bytes, replaced: m.replaced.length });
+    await putPatch({ name: unwrapped.name, bytes: unwrapped.bytes, replaced: m.replaced.length, added: m.added.length });
     note.textContent = '';
     renderPatches();
-    if (confirm(`${unwrapped.name} replaces ${m.replaced.length} resource(s). Reload the page to play with it?`)) location.reload();
+    if (confirm(`${unwrapped.name}: ${patchChanges(m.replaced.length, m.added.length)}. Reload the page to play with it?`)) location.reload();
   } catch (err) {
     note.textContent = String(err.message || err);
     say('patch not added: ' + (err.message || err));

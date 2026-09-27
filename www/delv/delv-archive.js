@@ -231,6 +231,28 @@ function describeDelverArchive(bytes) {
   return { ok: true, title, player, populated };
 }
 
+/* Which of several Delver archives in one container to open. Until
+   24 September 2026 the first entry that read as one won and the rest were
+   unreachable: the Rocky the Flying Chicken add-on is a zip with two saves
+   in it, and the second could only be opened by unpacking the zip. Now
+   `opts.pick` names an entry (its name, or its path in a zip) and the first
+   is the default, and what comes back lists every one under `container`
+   when there is more than one, so the page can offer the others by name
+   without reading the file again (switchContained). A pick that names
+   nothing in the file falls back to the first, as an installer pick does. */
+function pickContained(found, where, pick) {
+  if (!found.length) return null;
+  const chosen = (pick && found.find(f => f.entry.name === pick || f.entry.path === pick)) || found[0];
+  const e = chosen.entry;
+  const out = { bytes: chosen.data, via: where, info: chosen.info,
+                forks: { kind: where, name: e.name, type: e.type, creator: e.creator, data: chosen.data, rsrc: chosen.rsrc() } };
+  if (found.length > 1) out.container = {
+    kind: where, picked: e.name,
+    entries: found.map(f => ({ name: f.entry.name, path: f.entry.path || f.entry.name, len: f.data.length,
+                               title: f.info.title, player: f.info.player || '' })) };
+  return out;
+}
+
 function extractDelverArchive(bytes, opts) {
   opts = opts || {};
   const notes = [];
@@ -284,7 +306,7 @@ function extractDelverArchive(bytes, opts) {
     let arc = null;
     try { arc = parseStuffItArchive(buf); } catch (e) { return null; }
     const where = arc.format + ' archive' + (wrapper ? ' in ' + wrapper : '');
-    const refused = [];
+    const refused = [], found = [];
     for (const e of arc.entries) {
       if (e.isFolder || !e.dataLen) continue;
       let data;
@@ -292,13 +314,10 @@ function extractDelverArchive(bytes, opts) {
       catch (err) { refused.push(e.name + ' (' + err.message.replace(/^"[^"]*" data fork /, '') + ')'); continue; }
       const d = describeDelverArchive(data);
       if (!d.ok) { notes.push('"' + e.name + '" in the ' + where + ', ' + d.reason); continue; }
-      let rsrc = null;
-      try { rsrc = stuffItFork(buf, e, 'rsrc'); } catch (err) { rsrc = null; }
-      return { bytes: data, via: where, info: d,
-               forks: { kind: where, name: e.name, type: e.type, creator: e.creator, data, rsrc } };
+      found.push({ entry: e, data, info: d, rsrc: () => { try { return stuffItFork(buf, e, 'rsrc'); } catch (err) { return null; } } });
     }
     if (refused.length) notes.push('in the ' + where + ', could not decompress ' + refused.join(', '));
-    return null;
+    return pickContained(found, where, opts.pick);
   };
   const bare = fromStuffIt(bytes, '');
   if (bare) return bare;
@@ -317,7 +336,7 @@ function extractDelverArchive(bytes, opts) {
     try { arc = parseZipArchive(buf); }
     catch (e) { notes.push('a zip archive that will not read: ' + e.message); return null; }
     const where = 'zip archive';
-    const refused = [];
+    const refused = [], found = [];
     for (const e of arc.entries) {
       if (e.isFolder || !e.len) continue;
       let data;
@@ -325,12 +344,10 @@ function extractDelverArchive(bytes, opts) {
       catch (err) { refused.push(err.message); continue; }
       const d = describeDelverArchive(data);
       if (!d.ok) { notes.push('"' + e.path + '" in the ' + where + ', ' + d.reason); continue; }
-      const rsrc = zipFork(buf, e, 'rsrc');
-      return { bytes: data, via: where, info: d,
-               forks: { kind: where, name: e.name, type: e.type, creator: e.creator, data, rsrc } };
+      found.push({ entry: e, data, info: d, rsrc: () => zipFork(buf, e, 'rsrc') });
     }
     if (refused.length) notes.push('in the ' + where + ', could not read ' + refused.join(', '));
-    return null;
+    return pickContained(found, where, opts.pick);
   };
   const zipped = fromZip(bytes);
   if (zipped) return zipped;
@@ -1315,10 +1332,20 @@ function mergeDelverPatch(baseBytes, patchBytes) {
   if (!patch.resources.length) throw new Error('that patch holds no resources');
 
   const byId = new Map(base.resources.map(r => [r.resid, r]));
-  const replaced = [], skipped = [], disagreed = [];
+  const replaced = [], added = [], skipped = [], disagreed = [];
   for (const r of patch.resources) {
     const target = byId.get(r.resid);
-    if (!target) { skipped.push(r.resid); continue; }
+    if (!target) {
+      // A resource the game file does not have is added: a gremlin's script
+      // (0x1F00 + n) is one the shipped file has none of, and the engine
+      // runs it once it is there (26 September 2026). The two records that
+      // are Magpie's rather than the game's stay out: the patch's own
+      // descriptor, and the installed list, which Magpie writes itself.
+      if (r.resid === DELV_PATCH_DESCRIPTOR || r.resid === DELV_PATCH_INSTALLED) { skipped.push(r.resid); continue; }
+      base.resources.push(r);
+      added.push(r.resid);
+      continue;
+    }
     // Both sides ran the same smartDecrypt on the same id. When they reach
     // different verdicts one of the two plaintexts is not plaintext, and the
     // writer re-encrypts from the base's verdict -- so writing this resource
@@ -1329,10 +1356,10 @@ function mergeDelverPatch(baseBytes, patchBytes) {
     target.data = r.data;
     replaced.push(r.resid);
   }
-  if (!replaced.length)
+  if (!replaced.length && !added.length)
     throw new Error('none of that patch\'s ' + patch.resources.length +
                     ' resource(s) could be applied to the game archive');
-  return { bytes: writeDelverArchive(base), replaced, skipped, disagreed,
+  return { bytes: writeDelverArchive(base), replaced, added, skipped, disagreed,
            title: patch.scenarioTitle };
 }
 
@@ -1682,7 +1709,7 @@ function describeDelverPatch(baseSpec, patchSpec) {
     isInstalled: !!(desc && desc.uuidText && installed.indexOf(desc.uuidText) >= 0),
     resources,
     willReplace: resources.filter(r => r.inBase && r.encryptionAgrees).length,
-    notInBase: resources.filter(r => !r.inBase).map(r => r.resid),
+    willAdd: resources.filter(r => !r.inBase).map(r => r.resid),
     disagreed: resources.filter(r => r.inBase && !r.encryptionAgrees).map(r => r.resid),
     unchanged: resources.filter(r => r.identical).map(r => r.resid),
     usable: !reasons.length,
@@ -1711,6 +1738,33 @@ function describeDelverPatch(baseSpec, patchSpec) {
    changed; comparing what was stored would call that a difference, and every
    rebuild would look like a change to half the file. `encryptionChanged` says
    so separately for the handful where the verdict differs. */
+/* Do two versions of a script resource differ only in the unset keys of its
+   object table? A script resource ends in that table -- a count word, then
+   six bytes an entry, a value and a key -- and an entry whose value is None
+   (0x5000FFFF) has a key the compiler never wrote: the slot holds whatever
+   its buffer did, which differs from build to build. Between Ambrosia's
+   releases two thirds of the resources whose bytes differ differ there and
+   nowhere else (24 September 2026, `releases_check.mjs`), and until that
+   was read every count of what a release changed carried an asterisk. Two
+   resources of different lengths, or with no table, are a real change; the
+   table is found by dvmDiscover, which loads after this file and is only
+   called from here at comparison time. */
+function delverUnsetKeysOnly(a, b, resid) {
+  if (a.length !== b.length || typeof dvmDiscover !== 'function') return false;
+  let toff = null;
+  try { toff = dvmDiscover(b, resid).tableOffset; } catch (e) { return false; }
+  if (toff === null || toff + 2 > b.length) return false;
+  const count = ((b[toff] << 8) | b[toff + 1]) & 0x0FFF, tend = toff + 2 + count * 6;
+  const none = (x, p) => (((x[p] << 24) | (x[p + 1] << 16) | (x[p + 2] << 8) | x[p + 3]) >>> 0) === 0x5000FFFF;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) continue;
+    if (i < toff + 2 || i >= tend) return false;
+    const p = toff + 2 + Math.floor((i - toff - 2) / 6) * 6;
+    if (i - p < 4 || !none(a, p) || !none(b, p)) return false;
+  }
+  return true;
+}
+
 function describeDelverDiff(a, b) {
   if (!a || !b) return null;
   const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
@@ -1724,7 +1778,8 @@ function describeDelverDiff(a, b) {
     if (!!ar.encrypted !== !!br.encrypted) encryptionChanged.push(resid);
     if (same(ar.data, br.data)) { unchanged++; continue; }
     changed.push({ resid, subn: (resid >> 8) - 1, a: ar, b: br,
-                   aLength: ar.data.length, bLength: br.data.length });
+                   aLength: ar.data.length, bLength: br.data.length,
+                   unsetKeysOnly: delverUnsetKeysOnly(ar.data, br.data, resid) });
   }
   for (const [resid, br] of bm) if (!am.has(resid)) added.push({ resid, subn: (resid >> 8) - 1, b: br });
   const bySubn = new Map();
@@ -1735,6 +1790,10 @@ function describeDelverDiff(a, b) {
   }
   return {
     changed, added, removed, encryptionChanged, unchanged,
+    // How many of `changed` differ only in unset table keys, which is not
+    // a change; `changed` keeps them, since a caller writing a patch of
+    // every difference wants the file as it is.
+    unsetKeysOnly: changed.filter(c => c.unsetKeysOnly).length,
     aCount: am.size, bCount: bm.size,
     identical: !changed.length && !added.length && !removed.length,
     // Sorted so the biggest difference leads, which is what a reader wants to
@@ -1957,12 +2016,12 @@ function parseDelverCharacterRecords(data) {
       index: out.length, raw,
       zone: raw[0], x: xy >> 12, y: xy & 0xFFF,
       proptype: ap & 0x3FF, aspect: ap >> 10,
-      state: raw[8],                       // C0/D0/80 on the placed, 00 otherwise
+      state: raw[8],                       // bit_flags, field 19: character flags 0 to 7, bit 6 in the party
       body: raw[9], reflex: raw[10], mind: raw[11],
       xp: (raw[12] << 8) | raw[13],
       health: raw[14], healthMax: raw[15],
       magic: raw[16], magicMax: raw[17],
-      party: raw[18],                      // 0 until Hector joins, 5 after
+      party: raw[18],                      // timing, field 35: ticks to the next move, counted down by TActiveMonster::DoTick
       level: raw[19],
       nutrition: raw[27], training: raw[28]
     });
