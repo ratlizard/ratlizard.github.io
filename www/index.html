@@ -1370,7 +1370,7 @@ document.getElementById('importfile').addEventListener('change', async e => {
    and takes input on is the same one either way. Without WebGL the button
    says so in the log and the screen is shown as the game draws it: a display
    filter must not be able to stop the game. */
-const UNDITHER = { sens: 0.67, strength: 0.67, detail: 0.5, edge: 64 };
+const UNDITHER = { sens: 0.67, strength: 0.67, detail: 0.5, edge: 64, light: true };
 let unditherGL = null, unditherOn = false;
 try { unditherOn = localStorage.getItem('undither') === '1'; } catch (e) {}
 
@@ -1399,11 +1399,29 @@ function makeUndither() {
      drawn edge agrees with them. The residual is a pixel less its own
      neighbourhood's mean, and the detector compares residuals along both
      axes, three pixels each way (grimoire's LINE_REACH). */
+  /* Blending in light rather than in stored values. A fine dither of light
+     and dark pixels looks as bright as the average of their LIGHT, and the
+     stored sRGB values are not proportional to light, so averaging them --
+     which is what grimoire does -- makes a dithered area darker than it looked
+     undithered: on the conversation window's blue background by 40%, over a
+     whole conversation frame by 5% (26 September). So the detector still
+     works on stored values, where grimoire's thresholds were tuned, and says
+     where to blend and how much; the blends and averages are done in light
+     (the sRGB transfer curve, IEC 61966-2-1), and the last pass encodes the
+     result back. u_light 0 is grimoire's arithmetic, which the probe checks
+     against grimoire itself. */
+  const LIGHT = `
+    float lin1(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
+    vec3 toLight(vec3 c) { return vec3(lin1(c.r), lin1(c.g), lin1(c.b)); }
+    float enc1(float v) { v = clamp(v, 0.0, 1.0); return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
+    vec3 toStored(vec3 l) { return vec3(enc1(l.r), enc1(l.g), enc1(l.b)); }`;
   const FS_DETECT = `precision highp float;
     varying vec2 v_texCoord;
     uniform sampler2D u_src; uniform sampler2D u_mean; uniform sampler2D u_idx;
     uniform vec2 u_texSize; uniform float u_sens; uniform float u_strength; uniform float u_useIdx;
+    uniform float u_light;
     ${INSIDE}
+    ${LIGHT}
     vec3 srcAt(vec2 uv) { return texture2D(u_src, uv).rgb * 255.0; }
     vec3 resAt(vec2 uv) { return (texture2D(u_src, uv).rgb - texture2D(u_mean, uv).rgb) * 255.0; }
     void main() {
@@ -1443,16 +1461,19 @@ function makeUndither() {
         float idx = floor(texture2D(u_idx, v_texCoord).r * 255.0 + 0.5);
         if (idx >= 224.0 && idx < 252.0) d = 0.0;
       }
-      // The checkerboard notch: half the pixel, half its four orthogonal neighbours.
+      // The checkerboard notch: half the pixel, half its four orthogonal
+      // neighbours, averaged in light when u_light is on.
+      vec3 cv = u_light > 0.5 ? toLight(c / 255.0) : c / 255.0;
       vec3 n4 = vec3(0.0); float n4cnt = 0.0;
       for (int e = 0; e < 4; e++) {
         vec2 off = e == 0 ? vec2(px.x, 0.0) : e == 1 ? vec2(-px.x, 0.0) : e == 2 ? vec2(0.0, px.y) : vec2(0.0, -px.y);
         vec2 uv = v_texCoord + off;
         if (!inside(uv)) continue;
-        n4 += srcAt(uv); n4cnt += 1.0;
+        vec3 nv = texture2D(u_src, uv).rgb;
+        n4 += u_light > 0.5 ? toLight(nv) : nv; n4cnt += 1.0;
       }
-      vec3 filt = n4cnt > 0.0 ? 0.5 * c + 0.5 * (n4 / n4cnt) : c;
-      gl_FragColor = vec4((c + d * u_strength * (filt - c)) / 255.0, d);   // d rides along for pass 3
+      vec3 filt = n4cnt > 0.0 ? 0.5 * cv + 0.5 * (n4 / n4cnt) : cv;
+      gl_FragColor = vec4(cv + d * u_strength * (filt - cv), d);   // d rides along for pass 3
     }`;
   const FS_DETAIL = `precision highp float;
     varying vec2 v_texCoord; uniform sampler2D u_res;
@@ -1481,7 +1502,9 @@ function makeUndither() {
   const FS_SUPER = `precision highp float;
     varying vec2 v_texCoord; uniform sampler2D u_det; uniform sampler2D u_idx;
     uniform vec2 u_texSize; uniform float u_strength; uniform float u_edge; uniform float u_useIdx;
+    uniform float u_light;
     ${INSIDE}
+    ${LIGHT}
     float lockedAt(vec2 uv) {
       if (u_useIdx < 0.5) return 0.0;
       float idx = floor(texture2D(u_idx, uv).r * 255.0 + 0.5);
@@ -1491,28 +1514,33 @@ function makeUndither() {
       vec2 uv = vec2(v_texCoord.x, 1.0 - v_texCoord.y);   // the frame arrived top row first
       vec2 px = 1.0 / u_texSize;
       vec4 self = texture2D(u_det, uv);
-      vec3 c = self.rgb * 255.0;
+      vec3 cv = self.rgb;                                   // light, or stored when u_light is off
+      vec3 cs = u_light > 0.5 ? toStored(cv) : cv;          // stored, for the edge weights
       float baseLock = lockedAt(uv);
       float invSr = 1.0 / (2.0 * u_edge * u_edge);
-      vec3 up = vec3(0.0);
-      for (int s = 0; s < 4; s++) {
-        vec2 off = vec2(s == 0 || s == 2 ? -0.25 : 0.25, s < 2 ? -0.25 : 0.25);
-        vec3 acc = vec3(0.0); float wsum = 0.0;
-        for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
-          vec2 t = uv + vec2(float(dx), float(dy)) * px;
-          if (!inside(t)) continue;
-          if (lockedAt(t) != baseLock) continue;   // never blend across structure
-          vec3 n = texture2D(u_det, t).rgb * 255.0;
-          vec2 sd = vec2(float(dx), float(dy)) - off;
-          vec3 dc = n - c;
-          float w = exp(-dot(sd, sd) * 2.0) * exp(-dot(dc, dc) * invSr);
-          acc += n * w; wsum += w;
-        }
-        up += wsum > 0.0 ? acc / wsum : c;
+      // Each neighbour once, into all four sub-samples.
+      vec3 acc0 = vec3(0.0), acc1 = vec3(0.0), acc2 = vec3(0.0), acc3 = vec3(0.0);
+      float ws0 = 0.0, ws1 = 0.0, ws2 = 0.0, ws3 = 0.0;
+      for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        vec2 t = uv + vec2(float(dx), float(dy)) * px;
+        if (!inside(t)) continue;
+        if (lockedAt(t) != baseLock) continue;   // never blend across structure
+        vec3 nv = texture2D(u_det, t).rgb;
+        vec3 ns = u_light > 0.5 ? toStored(nv) : nv;
+        vec3 dc = (ns - cs) * 255.0;
+        float rw = exp(-dot(dc, dc) * invSr);
+        vec2 b = vec2(float(dx), float(dy));
+        vec2 s0 = b - vec2(-0.25, -0.25), s1 = b - vec2(0.25, -0.25), s2 = b - vec2(-0.25, 0.25), s3 = b - vec2(0.25, 0.25);
+        float w0 = exp(-dot(s0, s0) * 2.0) * rw, w1 = exp(-dot(s1, s1) * 2.0) * rw;
+        float w2 = exp(-dot(s2, s2) * 2.0) * rw, w3 = exp(-dot(s3, s3) * 2.0) * rw;
+        acc0 += nv * w0; ws0 += w0; acc1 += nv * w1; ws1 += w1;
+        acc2 += nv * w2; ws2 += w2; acc3 += nv * w3; ws3 += w3;
       }
-      up *= 0.25;
+      vec3 up = 0.25 * ((ws0 > 0.0 ? acc0 / ws0 : cv) + (ws1 > 0.0 ? acc1 / ws1 : cv)
+                      + (ws2 > 0.0 ? acc2 / ws2 : cv) + (ws3 > 0.0 ? acc3 / ws3 : cv));
       float w = min(1.0, self.a * u_strength);
-      gl_FragColor = vec4((up + (1.0 - w) * (c - up)) / 255.0, 1.0);
+      vec3 outv = up + (1.0 - w) * (cv - up);
+      gl_FragColor = vec4(u_light > 0.5 ? toStored(outv) : outv, 1.0);
     }`;
   try {
     const compile = (type, source) => {
@@ -1589,6 +1617,7 @@ function makeUndither() {
     let useIdx = false;
     return {
       canvas: glCanvas,
+      light: UNDITHER.light,
       // The indices are taken first: asking the module for them can grow its
       // memory, which would leave a view already taken on the frame empty.
       indices(idx, nw, nh) {
@@ -1604,11 +1633,16 @@ function makeUndither() {
         gl.bindTexture(gl.TEXTURE_2D, texSrc);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
         gl.viewport(0, 0, w, h);
+        const light = this.light ? 1 : 0;
+        gl.useProgram(progDetect);
+        gl.uniform1f(gl.getUniformLocation(progDetect, 'u_useIdx'), useIdx ? 1 : 0);
+        gl.uniform1f(gl.getUniformLocation(progDetect, 'u_light'), light);
+        gl.useProgram(progSuper);
+        gl.uniform1f(gl.getUniformLocation(progSuper, 'u_useIdx'), useIdx ? 1 : 0);
+        gl.uniform1f(gl.getUniformLocation(progSuper, 'u_light'), light);
         pass(progMean, fboMean, [['u_src', texSrc]]);
-        gl.useProgram(progDetect); gl.uniform1f(gl.getUniformLocation(progDetect, 'u_useIdx'), useIdx ? 1 : 0);
         pass(progDetect, fboRes, [['u_src', texSrc], ['u_mean', texMean], ['u_idx', texIdx]]);
         pass(progDetail, fboDet, [['u_res', texRes]]);
-        gl.useProgram(progSuper); gl.uniform1f(gl.getUniformLocation(progSuper, 'u_useIdx'), useIdx ? 1 : 0);
         pass(progSuper, null, [['u_det', texDet], ['u_idx', texIdx]]);
       },
     };

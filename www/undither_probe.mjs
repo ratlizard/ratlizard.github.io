@@ -16,8 +16,10 @@
 //
 // Usage: node undither_probe.mjs [game.sit] [--dump <dir>] [--wait <seconds>]
 //   --dump writes raw.png and undithered.png, the frame before and after.
-//   --wait lets the game run that much longer first: the frame is otherwise
-//   the title picture, and the start board is about fifteen seconds on.
+//   --wait lets the game run that much longer first; the default, 25, takes
+//   the start board, whose dithered wood and plaques are what shows the
+//   brightness check working (grimoire's arithmetic darkens them by 7.56%).
+//   --wait 0 takes the title picture instead.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -30,7 +32,7 @@ const game = process.argv.find(a => a.endsWith('.sit')) || 'game.sit';
 const dumpAt = process.argv.indexOf('--dump');
 const dumpDir = dumpAt > 0 ? process.argv[dumpAt + 1] : null;
 const waitAt = process.argv.indexOf('--wait');
-const extraWait = waitAt > 0 ? Number(process.argv[waitAt + 1]) * 1000 : 0;
+const extraWait = (waitAt > 0 ? Number(process.argv[waitAt + 1]) : 25) * 1000;
 const grimoireGraphics = join(here, '..', '..', 'grimoire', 'js', 'delv-graphics.js');
 
 let failures = 0;
@@ -127,11 +129,15 @@ const r = await run(`(() => {
   const raw = new Uint8Array(mem.buffer, wasm.cw_render(), W * H * 4).slice();
   const read = document.createElement('canvas'); read.width = W; read.height = H;
   const rc = read.getContext('2d', { willReadFrequently: true });
-  const gpu = lock => {
+  const gpu = (lock, light) => {
+    unditherGL.light = light;
     unditherGL.indices(lock ? idx : null, W, H); unditherGL.draw(raw);
     rc.drawImage(unditherGL.canvas, 0, 0); return rc.getImageData(0, 0, W, H).data;
   };
-  const locked = gpu(true), unlocked = gpu(false);
+  // grimoire's arithmetic first, for the comparison with grimoire; then the
+  // blending in light the page uses, for the brightness check.
+  const locked = gpu(true, false), unlocked = gpu(false, false), lit = gpu(true, true);
+  unditherGL.light = UNDITHER.light;
   const lockMask = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) lockMask[i] = idx[i] >= 0xE0 && idx[i] < 0xFC ? 1 : 0;
   const P = Object.assign({}, __grimoire.UD, { stray: 0, passes: 1 });
@@ -158,9 +164,16 @@ const r = await run(`(() => {
     }
     if (pixWorst > 2) { over2++; if (atEnd) overAtEnds++; }
   }
+  // Light, on the pixels the filter changes: sRGB decoded, Rec. 709 weights.
+  const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = (a, i) => 0.2126 * lin(a[i * 4]) + 0.7152 * lin(a[i * 4 + 1]) + 0.0722 * lin(a[i * 4 + 2]);
+  let lightRaw = 0, lightStored = 0, lightLit = 0, lightN = 0;
+  for (let i = 0; i < W * H; i++) if (px(locked, i)) { lightRaw += L(raw, i); lightStored += L(locked, i); lightLit += L(lit, i); lightN++; }
   const png = a => { rc.putImageData(new ImageData(new Uint8ClampedArray(a), W, H), 0, 0); return read.toDataURL('image/png'); };
   return { W, H, changed, refChanged, animated, animTouched, animTouchedUnlocked,
-           meanDiff: sum / (W * H * 3), worst, over2, overAtEnds, stageOver2, raw: png(raw), out: png(locked) };
+           meanDiff: sum / (W * H * 3), worst, over2, overAtEnds, stageOver2,
+           storedLoss: lightStored / lightRaw - 1, litLoss: lightLit / lightRaw - 1, lightN,
+           raw: png(raw), out: png(lit) };
 })()`);
 
 if (r.noIndices) { fail('the module gives the palette indices', 'cw_render_indices answered null: the screen is not 8 bits deep, or not the page\'s size'); process.exit(1); }
@@ -180,6 +193,11 @@ else ok('the GPU agrees with grimoire', `mean |difference| ${r.meanDiff.toFixed(
 if (r.stageOver2 <= limit * 4)
   fail('the agreement check can fail', `grimoire without its supersample is only ${r.stageOver2} pixels from itself with it`);
 else ok('the agreement check can fail', `grimoire without its supersample is ${r.stageOver2} pixels more than 2 away`);
+// Blending in light keeps a dithered area as bright as it looked; grimoire's
+// arithmetic, the control, darkens it.
+if (Math.abs(r.litLoss) > 0.01) fail('blending in light keeps the brightness', `${(100 * r.litLoss).toFixed(2)}% over ${r.lightN} changed pixels`);
+else ok('blending in light keeps the brightness', `${(100 * r.litLoss).toFixed(2)}% over ${r.lightN} changed pixels, against ${(100 * r.storedLoss).toFixed(2)}% with grimoire's arithmetic`);
+if (r.storedLoss > -0.02) console.log(`  note the brightness check was not tested: grimoire's arithmetic loses only ${(100 * r.storedLoss).toFixed(2)}% here`);
 if (r.animTouched) fail('animated colours are left alone', `${r.animTouched} of ${r.animated} changed`);
 else ok('animated colours are left alone', `${r.animated} such pixels, none changed`);
 if (r.animTouchedUnlocked) ok('the lock was tested', `without it ${r.animTouchedUnlocked} of them change`);
