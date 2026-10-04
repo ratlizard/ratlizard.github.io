@@ -446,7 +446,7 @@ function chooseScreen() {
   if (vh >= vw) return [640, Math.min(2048, Math.max(480, Math.round(640 * vh / vw)))];
   return [Math.min(2048, Math.max(640, Math.round(480 * vw / vh))), 480];
 }
-const POWERPC = new URLSearchParams(location.search).get('ppc') === '1';
+const POWERPC = new URLSearchParams(location.search).get('ppc') !== '0';
 let booted = false, W = 0, H = 0, canvas = document.getElementById('screen'), ctx = canvas.getContext('2d');
 let bootPromise = null;
 function boot() { return bootPromise || (bootPromise = bootOnce().catch(e => { bootPromise = null; throw e; })); }
@@ -472,10 +472,11 @@ async function bootOnce() {
   noteHeap();
   const t0 = performance.now();
   const [sw, sh] = chooseScreen();
-  // Cythera ships both slices in one application. 68K is what this page has
-  // always run; ?ppc=1 launches the PowerPC one instead, which the fork
-  // draws through Cythera's own window and control definitions. The choice
-  // is made inside cw_load, so it is said before it.
+  // Cythera ships both slices in one application. The page launches the
+  // PowerPC one, which the fork draws through Cythera's own window and control
+  // definitions, as the desktop runner does since 3 October 2026; ?ppc=0
+  // launches the 68K one, which the page ran until then. The choice is made
+  // inside cw_load, so it is said before it.
   if (POWERPC) { wasm.cw_prefer_powerpc(1); say('launching the PowerPC slice'); }
   const rc = wasm.cw_load(p, bytes.length, Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET, sw, sh);
   if (rc !== 0) throw new Error(dec.decode(new Uint8Array(mem.buffer, wasm.cw_error_ptr(), wasm.cw_error_len())));
