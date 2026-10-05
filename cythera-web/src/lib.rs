@@ -832,7 +832,17 @@ fn json_str(out: &mut String, text: &str) {
 #[no_mangle]
 pub extern "C" fn cw_menus() -> *const u8 {
     with_state(|s| {
-        let snapshot = s.runner.guest_menu_snapshot();
+        let mut snapshot = s.runner.guest_menu_snapshot();
+        // The Help menu's item follows the balloons at once; the fork brings
+        // the guest's record up to date only at its next DrawMenuBar.
+        let on = s.runner.dispatcher().help_balloons_enabled();
+        for menu in &mut snapshot.menus {
+            if menu.id == systemless::menu_model::HELP_MENU_ID {
+                if let Some(item) = menu.items.first_mut() {
+                    item.text = if on { "Hide Balloons" } else { "Show Balloons" }.into();
+                }
+            }
+        }
         let mut out = String::from("[");
         for (mi, menu) in snapshot.menus.iter().enumerate() {
             if mi > 0 {
@@ -882,6 +892,15 @@ pub extern "C" fn cw_menus_len() -> usize {
 /// the item was present, enabled and selectable.
 #[no_mangle]
 pub extern "C" fn cw_menu_select(menu_id: i32, item: i32) -> i32 {
-    with_state(|s| i32::from(s.runner.select_guest_menu_item(menu_id as i16, item as i16)))
-        .unwrap_or(0)
+    with_state(|s| {
+        // The Help menu's Show Balloons is the system's, as on a Mac: it
+        // turns the balloons on or off and never reaches the game.
+        if menu_id as i16 == systemless::menu_model::HELP_MENU_ID && item == 1 {
+            let on = s.runner.dispatcher().help_balloons_enabled();
+            s.runner.dispatcher_mut().set_help_balloons_enabled(!on);
+            return 1;
+        }
+        i32::from(s.runner.select_guest_menu_item(menu_id as i16, item as i16))
+    })
+    .unwrap_or(0)
 }
