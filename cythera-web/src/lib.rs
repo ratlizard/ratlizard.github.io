@@ -649,6 +649,11 @@ pub extern "C" fn cw_render() -> *const u8 {
                 );
             }
         }
+        // Balloon Help, turned on from the game's Help menu: drawn over the
+        // screen as the cursor is (systemless/balloons-aobtjf).
+        if let Some(balloon) = d.help_balloon() {
+            display::render_help_balloon(frame, u32::from(*width), u32::from(*height), &balloon);
+        }
         frame.as_ptr()
     })
     .unwrap_or(std::ptr::null())
