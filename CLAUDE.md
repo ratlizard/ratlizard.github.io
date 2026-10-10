@@ -104,7 +104,9 @@ the page's own script under a stub document (it catches a use-before-declare
 that parsing cannot); `play_smoke` and `bench` pace the guest; `audio_smoke`
 counts non-silent samples; `saves_smoke` drives the store; `menus_smoke`
 selects a guest menu item; `music_smoke` lifts the page's zip reader out of
-`index.html` and runs the whole substitute-music path; `zip_smoke` runs the
+`index.html` and runs the whole substitute-music path; `qt_music_smoke` renders the
+game's theme on QuickTime's instruments as `qt-music.js`'s worker does and
+installs it (`qt_music_probe` is the same in headless Chrome, by hand); `zip_smoke` runs the
 page's zip reader, save import and patch unwrapping over real zips, Rocky the
 Flying Chicken among them; `patch_smoke` proves the
 Magpie patch route; `load_timing` times a save load call by call;

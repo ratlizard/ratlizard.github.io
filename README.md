@@ -33,6 +33,8 @@ The Node runners in `www/` drive the same module without a browser:
 | `page_smoke.mjs` | the page's script runs top to bottom under a stub document |
 | `audio_ring_check.mjs` | the audio ring out of the page: a stream fed in pieces comes out with no step anywhere, running dry bends rather than clicks and comes back without one, a ring flooded past its capacity stays bounded and cross-fades where it drops the oldest. Takes no arguments |
 | `patch_smoke.mjs` | the Magpie patch route: the vendored format files, the module's exports, and the real patch through its wrappers |
+| `qt_music_smoke.mjs` | the game's tunes on QuickTime 3's instruments: the worker's scripts load on their own, each tune's checksum is the one the fork files a substitute under, and the theme's render installs as a recording and changes what reaches the mixer. Takes the archive and `QUICKTIM.EXE` (grimoire's suite leaves one in `$TMPDIR`) |
+| `qt_music_probe.mjs` | the same in the real page, in headless Chrome: the instruments fetched from archive.org and kept, eleven tunes installed while the game runs, a second visit that fetches nothing and has the theme before the game starts, and the Music panel's checkbox. Fetches 7 MB, so it is run by hand |
 | `layout_probe.mjs` | the page at phone sizes in a real browser: the document is exactly the window and does not scroll, and every panel and pad opens inside it under the bar's measured height. Needs Google Chrome and the built module beside the page, and says so rather than passing when either is missing; `--dump` prints the measurements |
 
 Each takes the game archive as its first argument — except

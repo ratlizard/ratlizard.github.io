@@ -211,7 +211,9 @@
 <div id="musicpanel" class="panel" hidden>
   <div class="row"><b>Music</b> <span id="musicnote" class="dim"></span> <button id="musicclose">Close</button></div>
   <div class="row dim">Give it a zip, or files. Anything named <code>1A2B3C4D.mid</code> for the tune it replaces is taken at its word; anything else is put in track order and the first eleven become the game's eleven tunes. MIDI plays on the built-in instruments; recordings in any format this browser can decode are played as they are. The game still chooses which tune plays, when it starts and how loud it is. A tune already playing changes when it next starts.</div>
-  <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav" multiple hidden></label></div>
+  <div class="row"><label><input type="checkbox" id="qtmusic" checked> Play the Game's Music on QuickTime's Instruments</label> <span id="qtnote" class="dim"></span></div>
+  <div class="row dim">The game's tunes hold notes, not sound. QuickTime played them on a set of sampled instruments, which this page fetches from archive.org's copy of the QuickTime 3 CD (7 MB, once). Until they arrive, the built-in instruments play. If the fetch fails, choose <code>QUICKTIM.EXE</code> or <code>QuickTimeMusicalInstruments.qtx</code> below.</div>
+  <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav,.exe,.qtx" multiple hidden></label></div>
   <div class="row"><select id="musicsource"></select> <a id="musicdownload" class="linkbtn" target="_blank" rel="noopener">Download</a> <button id="musicfetch">Fetch</button></div>
   <div class="row"><input id="musicurl" type="url" placeholder="https://… any other zip"> <button id="musicload">Fetch</button></div>
   <div class="row dim">cytheraguides.com does not allow another site to read its files, so Fetch fails there and there is nothing this page can do about it. <b>Download</b> opens the chosen set in a new tab; save it, then use <b>Choose a zip</b> above. Fetch is kept for a site that does allow it.</div>
@@ -233,6 +235,7 @@
 <script src="delv/mac-containers.js"></script>
 <script src="delv/mac-stuffit.js"></script>
 <script src="delv/delv-archive.js"></script>
+<script src="qt-music.js"></script>
 <script>
 'use strict';
 // KeyboardEvent.code -> Mac virtual key code, the desktop runner's table.
@@ -478,12 +481,14 @@ async function bootOnce() {
   // launches the 68K one, which the page ran until then. The choice is made
   // inside cw_load, so it is said before it.
   if (POWERPC) { wasm.cw_prefer_powerpc(1); say('launching the PowerPC slice'); }
+  qtBegin();
   const rc = wasm.cw_load(p, bytes.length, Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET, sw, sh);
   if (rc !== 0) throw new Error(dec.decode(new Uint8Array(mem.buffer, wasm.cw_error_ptr(), wasm.cw_error_len())));
   noteHeap();
   const restored = await restoreSaves();
   const tunes = await restoreMusic();
   const patched = await applyPatches();
+  await qtRenderGameTunes(QT_BOOT_WAIT_MS);
   wasm.cw_start();
   W = wasm.cw_width(); H = wasm.cw_height();
   canvas.width = W; canvas.height = H;
@@ -893,7 +898,8 @@ async function installMusicFile(checksum, label, bytes, store) {
     if (!pcm) return 0;
     payload = pcm;
   }
-  const kind = wasm.cw_tune_install(checksum, allocBytes(payload), payload.length);
+  const kind = installTuneBytes(checksum, payload);
+  if (kind) { qt.user.add(checksum >>> 0); qt.installed.delete(checksum >>> 0); }
   if (store && kind) {
     try { await putMusic({ checksum, name: label, kind, bytes: payload }); }
     catch (e) { say('music: could not store ' + label + ': ' + e); }
@@ -937,6 +943,14 @@ async function installMusicFiles(files) {
 
 // A zip, or a single file.
 async function acceptMusicBytes(name, bytes) {
+  // The instruments, where archive.org could not be reached.
+  if (/\.(exe|qtx)$/i.test(name) || /^QuickTime Musical Instruments/i.test(name)) {
+    try { localStorage.setItem('qtmusic', '1'); } catch (e) {}
+    document.getElementById('qtmusic').checked = true;
+    say('music: reading the instruments from ' + name);
+    await qtRestart(bytes);
+    return;
+  }
   if (/\.zip$/i.test(name) || (bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4B)) {
     say('music: unpacking…');
     const entries = await unzip(bytes);
@@ -951,8 +965,167 @@ async function acceptMusicBytes(name, bytes) {
 async function restoreMusic() {
   let recs = [];
   try { recs = await listMusic(); } catch (e) { return 0; }
-  for (const r of recs) wasm.cw_tune_install(r.checksum, allocBytes(r.bytes), r.bytes.length);
+  for (const r of recs) installTuneBytes(r.checksum, r.bytes);
+  qt.user = new Set(recs.map(r => r.checksum >>> 0));
   return recs.length;
+}
+
+// --- the game's own music on QuickTime's instruments
+//
+// qt-music.js says what this is and why it needs no change to the fork. The
+// page's part is the order of things. The instruments are asked for as the
+// boot begins, from the two megabytes kept from an earlier visit or, the
+// first time, from archive.org, which is slow and is never waited for. The
+// tunes are read out of Cythera Data once the patches are merged, so a patch
+// that replaces a tune is what gets rendered, and each is rendered in a
+// worker and installed as the recording for its checksum, the theme first. A
+// boot with the instruments already here waits a few seconds for the theme,
+// since the title screen starts it at once and a tune that has started keeps
+// its instruments until it next starts; nothing else waits.
+//
+// A file the visitor gave for a tune always wins: the render for that tune is
+// not installed, whichever of the two arrives first. Nothing rendered is
+// kept. Eleven tunes are 52 MB as the module holds them, a desktop renders
+// them in nine seconds, and keeping them would be a second copy of that in
+// the browser's store to save those seconds.
+const QT_INSTALLER_URL = 'https://archive.org/cors/apple-quicktime-3/apple-quicktime-3.iso/QUICKTIM.EXE';
+const QT_DB = 'cythera-qt-instruments', QT_STORE = 'instruments', QT_KEY = 'quicktime3';
+const QT_BOOT_WAIT_MS = 6000;
+const qt = { worker: null, ready: null, remembered: Promise.resolve(false), tunes: [], installed: new Set(), user: new Set(), note: '' };
+function qtWanted() {
+  if (typeof Worker === 'undefined') return false;
+  try { return localStorage.getItem('qtmusic') !== '0'; } catch (e) { return true; }
+}
+function qtNote(text) {
+  qt.note = text;
+  const el = document.getElementById('qtnote'); if (el) el.textContent = text;
+}
+function qtCache(mode, fn) {
+  return new Promise((resolve, reject) => {
+    let req;
+    try { req = indexedDB.open(QT_DB, 1); } catch (e) { reject(e); return; }
+    req.onupgradeneeded = () => req.result.createObjectStore(QT_STORE);
+    req.onerror = () => reject(req.error || new Error('IndexedDB unavailable'));
+    req.onsuccess = () => {
+      const db = req.result, tx = db.transaction(QT_STORE, mode), r = fn(tx.objectStore(QT_STORE));
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+      tx.oncomplete = () => db.close();
+    };
+  });
+}
+// The module copies what it is given, so the staging buffer is freed here.
+function installTuneBytes(checksum, bytes) {
+  const p = allocBytes(bytes);
+  const kind = wasm.cw_tune_install(checksum, p, bytes.length);
+  wasm.cw_free(p, bytes.length);
+  return kind;
+}
+// One question to the worker at a time; every caller awaits its answer.
+function qtAsk(w, msg) {
+  return new Promise((resolve, reject) => {
+    w.onmessage = e => e.data.op === 'error' ? reject(new Error(e.data.message)) : resolve(e.data);
+    w.onerror = e => reject(new Error(e.message || 'the music worker failed to start'));
+    w.postMessage(msg);
+  });
+}
+function qtStop() {
+  if (qt.worker) qt.worker.terminate();
+  qt.worker = null; qt.ready = null;
+  qtNote('');
+}
+// Start the worker and give it the instruments: `file` when the visitor chose
+// one, else what was kept, else archive.org's.
+function qtBegin(file) {
+  if (!qtWanted()) return;
+  qtStop();
+  const w = qt.worker = new Worker('qt-music.js' + (BUILD.startsWith('__') ? '' : '?v=' + BUILD));
+  // Whether the instruments are already here is known in a moment, and is
+  // what the boot asks before deciding to wait for the theme.
+  let kept = null;
+  qt.remembered = file ? Promise.resolve(false)
+    : qtCache('readonly', s => s.get(QT_KEY)).then(b => { kept = b || null; return !!kept; }, () => false);
+  qt.ready = (async () => {
+    let bytes = file || null, keep = !!file;
+    if (!bytes) { await qt.remembered; bytes = kept; kept = null; }
+    if (!bytes) {
+      qtNote('fetching the instruments…');
+      say("music: fetching QuickTime 3's instruments from archive.org (7 MB, once)");
+      const res = await fetch(QT_INSTALLER_URL);
+      if (!res.ok) throw new Error(`archive.org answered ${res.status}`);
+      bytes = new Uint8Array(await res.arrayBuffer());
+      keep = true;
+    }
+    const got = await qtAsk(w, { op: 'instruments', bytes });
+    if (keep) qtCache('readwrite', s => s.put(got.fork, QT_KEY)).catch(e => say('music: could not keep the instruments: ' + e));
+    return w;
+  })();
+  // Reported where it is awaited; this keeps a boot that never gets that far quiet.
+  qt.ready.catch(() => {});
+}
+// The tunes as the game will queue them: every resource of the music's
+// subindex, with the checksum the fork files its substitute under.
+function readGameTunes() {
+  const path = findPath('Cythera Data');
+  const file = path && stageFile(path);
+  if (!file) return [];
+  const arc = openDelverArchive(file.data), out = [];
+  for (let resid = 0x9000; resid <= 0x90FF; resid++) {
+    const data = getResourceBytes(arc, resid);
+    if (data && data.length > 8) out.push({ resid, data, sum: qtTuneStreamChecksum(data) });
+  }
+  return out;
+}
+const tuneName = sum => (GAME_TUNES.find(t => (t.sum >>> 0) === (sum >>> 0)) || { name: 'tune ' + (sum >>> 0).toString(16).toUpperCase() }).name;
+// Render every tune and install each as it comes back. Resolves once the
+// first is installed when the instruments were already here, or after
+// `waitMs`, whichever is sooner; the rest go on behind the game.
+async function qtRenderGameTunes(waitMs) {
+  if (!qt.ready) return;
+  if (!qt.tunes.length) {
+    try { qt.tunes = readGameTunes(); } catch (e) { say('music: could not read the tunes: ' + e.message); }
+  }
+  if (!qt.tunes.length) return;
+  const ready = qt.ready;
+  let first;
+  const firstDone = new Promise(r => { first = r; });
+  (async () => {
+    let w;
+    try { w = await ready; } catch (e) {
+      first();
+      if (qt.ready === ready) { qtStop(); qtNote('the instruments could not be fetched'); }
+      say(`music: could not get QuickTime 3's instruments (${e.message}); the built-in instruments play. Music has a file picker that takes QUICKTIM.EXE.`);
+      return;
+    }
+    const t0 = performance.now();
+    let done = 0;
+    for (const t of qt.tunes) {
+      if (qt.worker !== w) { first(); return; }
+      qtNote(`rendering ${done + 1} of ${qt.tunes.length}…`);
+      let r;
+      try { r = await qtAsk(w, { op: 'tune', sum: t.sum, data: t.data }); }
+      catch (e) { say(`music: ${tuneName(t.sum)} could not be rendered: ${e.message}`); first(); continue; }
+      if (qt.worker !== w) { first(); return; }
+      if (!qt.user.has(t.sum) && installTuneBytes(t.sum, r.wav) === 2) qt.installed.add(t.sum);
+      if (r.missing.length) say(`music: ${tuneName(t.sum)} has no instrument for part ${r.missing.join(', ')}`);
+      done++;
+      first();
+    }
+    say(`music: ${done} of the game's tunes rendered on QuickTime 3's instruments in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+    qtStop();
+    if (!musicPanel.hidden) renderMusic();
+  })();
+  if (waitMs && await qt.remembered) await Promise.race([firstDone, new Promise(r => setTimeout(r, waitMs))]);
+}
+// The visitor's files are all that is installed again; then the game's own.
+async function qtRestart(file) {
+  qtStop();
+  qt.installed.clear();
+  if (!wasm || !booted) return;
+  wasm.cw_tune_clear();
+  await restoreMusic();
+  qtBegin(file);
+  await qtRenderGameTunes(0);
 }
 
 // --- patches. A Magpie patch is a Delver Archive holding the resources to
@@ -1141,10 +1314,12 @@ async function renderMusic() {
   try { recs = await listMusic(); } catch (e) {}
   const by = new Map(recs.map(r => [r.checksum >>> 0, r]));
   note.textContent = recs.length ? `${recs.length} of ${GAME_TUNES.length} tunes replaced` : 'the game plays its own music';
+  document.getElementById('qtmusic').checked = qtWanted();
+  qtNote(qt.note);
   const kindName = k => k === 2 ? 'recording' : k === 1 ? 'MIDI' : '';
   musicTable.innerHTML = '<tr><th>Tune</th><th>Playing</th><th>Kind</th></tr>' + GAME_TUNES.map(t => {
     const r = by.get(t.sum >>> 0);
-    return `<tr><td>${t.name}</td><td>${r ? r.name.replace(/</g, '&lt;') : '<span class="dim">the game’s own</span>'}</td><td>${r ? kindName(r.kind) : ''}</td></tr>`;
+    return `<tr><td>${t.name}</td><td>${r ? r.name.replace(/</g, '&lt;') : '<span class="dim">the game’s own' + (qt.installed.has(t.sum >>> 0) ? ', on QuickTime’s instruments' : '') + '</span>'}</td><td>${r ? kindName(r.kind) : ''}</td></tr>`;
   }).join('');
 }
 document.getElementById('musicbtn').onclick = () => { musicPanel.hidden = !musicPanel.hidden; if (!musicPanel.hidden) renderMusic(); };
@@ -1188,9 +1363,17 @@ document.getElementById('musicload').onclick = () => fetchMusic(document.getElem
   };
 }
 document.getElementById('musicclear').onclick = async () => {
-  wasm.cw_tune_clear();
   try { await clearMusicStore(); } catch (e) {}
+  wasm.cw_tune_clear();
+  qt.user.clear();
+  await qtRestart();
   say('music: removed; the game plays its own again from the next tune');
+  renderMusic();
+};
+document.getElementById('qtmusic').onchange = async e => {
+  try { localStorage.setItem('qtmusic', e.target.checked ? '1' : '0'); } catch (err) {}
+  await qtRestart();
+  say(e.target.checked ? "music: the game's own tunes play on QuickTime 3's instruments from the next tune" : "music: the game's own tunes play on the built-in instruments from the next tune");
   renderMusic();
 };
 

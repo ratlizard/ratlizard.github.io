@@ -391,10 +391,10 @@ function extractDelverArchive(bytes, opts) {
     throw new Error(holding +
       (t ? " (type '" + t + "', creator '" + c + "')" : '') +
       (t === 'APPL' && c === 'Delv' ? ', which is the Cythera application, not its data.' : t === 'APPL' ? ', which is an application, not an archive.' : '.') +
-      " The archives this tool reads are “Cythera Data” (type 'DelS', creator 'Delv') and a Cythera saved game (type 'DelP'). [" + notes.join('; ') + ']');
+      " The files this page reads are “Cythera Data” (type 'DelS', creator 'Delv') and Cythera saved games (type 'DelP'). [" + notes.join('; ') + ']');
   }
   throw new Error('Not a Delver archive: ' + notes.join('; ') +
-    '. Expected "Cythera Data" itself, a .hqx / MacBinary / AppleSingle wrapper around it' +
+    '. Expected "Cythera Data" itself, a .hqx, MacBinary or AppleSingle file containing it' +
     (typeof looksLikeZip === 'function' ? ', a .sit or .zip holding it, ' : ', a .sit holding it, ') +
     'or the Cythera installer (.sit or Cythera.bin).');
 }
@@ -2068,6 +2068,257 @@ function writeDelverCharacterRecords(records) {
     out[p+27] = r.nutrition & 0xFF; out[p+28] = r.training & 0xFF;
   }
   return out;
+}
+
+/* A SAVED GAME MADE FROM THE SCENARIO, with no save to start from
+   (7 October 2026). A new game's save is eleven resources, and all but the
+   hero follow from the scenario file; what each is was measured against a
+   save the game wrote at a new game, and a file built this way was loaded
+   by the game and saved back (the workbench's GRIMOIRE-NOTES.md, under
+   `grimoire/generator-lqv9eo`, has both).
+
+     0x8100+zone  the hero's zone's list, the scenario's byte for byte
+     0x8200+zone  that zone's map memory, a bit a square, none seen
+     0xF009       the scenario's character records, the hero's rewritten
+     0xF306       the characters' prop list: record i is a first byte and
+                  bytes 1 to 5 of character i's record. 0x1C for record 0,
+                  0x42 for one in the hero's zone, 0xFF for one elsewhere
+     0xF00E       no room entered;  0x0401 no To Do line;  0x0404 no macro
+     0xF307       the script heap, one free block: its length less the
+                  header's eight.  0xF308 no frame
+     0x8800       the portrait chosen, a copy of the scenario's
+     0x0400       Char, then Mons, FXQ and Wind empty, and Grem with every
+                  gremlin cleared (state 2, no frame)
+
+   The other characters are left where the scenario has them. The game
+   places the cast by its schedules when the file loads (126 of them moved
+   in the trial), so placing them here would only be a second opinion.
+
+   Every figure of the game's own is an argument: the hero's fields are the
+   creation script's, read by the page (heroCreationRules), and karma,
+   difficulty, the clock and the day arrive in `o`. What is written in
+   here is structure: the lengths the program gives each segment
+   (save-format.md, *The write map*) and the empty patterns. Returns the
+   file, or null when the scenario lacks a piece. */
+/* The characters' prop list, 0xF306, as a save has it for a character
+   table and the hero's zone: record i a first byte and bytes 1 to 5 of
+   character i's record. A function of its own so that the rule can be held
+   to a real save's table and list (utilities/game_check.mjs). */
+function delverCharacterPropList(f9, zone) {
+  const f6 = new Uint8Array(256 * 16);
+  for (let i = 0; i < 256; i++) {
+    const r = f9.subarray(i * DELV_CHAR_RECORD, i * DELV_CHAR_RECORD + 6);
+    // Whether a record is a character at all is its byte 7, as a real new
+    // game's list has it (8 October 2026): 1 in every record the list
+    // gives a first byte, 0 in the rest, one of which carries a zone and
+    // nothing else. The rule had been "below 129", which is where the
+    // shipped table happens to stop. Two characters of the shipped cast
+    // still differ from a real new game's list, 92 and 125, both listed
+    // with no square: where the hour's schedule put them, which the game
+    // works out again when it loads the file.
+    const live = i === 0 || f9[i * DELV_CHAR_RECORD + 7] !== 0;
+    f6[i * 16] = i === 0 ? 0x1C : !live ? 0 : r[0] === zone ? 0x42 : 0xFF;
+    if (live && (r[0] || i === 0)) f6.set(r.subarray(1, 6), i * 16 + 1);
+  }
+  return f6;
+}
+
+function buildNewGameSave(arc, o) {
+  const seg = rid => { const raw = getResourceBytes(arc, rid); return raw ? smartDecrypt(raw, rid).data : null; };
+  const f9src = seg(0xF009);
+  if (!f9src) return null;
+  const records = parseDelverCharacterRecords(f9src);
+  const hero = records[1];
+  if (!hero) return null;
+  if (o.zone !== undefined) hero.zone = o.zone;
+  if (o.x !== undefined) hero.x = o.x;
+  if (o.y !== undefined) hero.y = o.y;
+  const zone = hero.zone, map = seg(0x8000 + zone), portrait = seg(o.portrait);
+  let list = seg(0x8100 + zone);
+  if (!list || !map || !portrait) return null;
+  /* What the hero knows (8 October 2026): `skills` is [{ type, aspect }]
+     and `skillFlags` the first byte of a skill's record, each skill a
+     record at the end of the zone's list that the hero holds (square
+     (0, 1): the low half-word is the holder), its prop type the skill's
+     number and its aspect its level. In the shipped game it is the king's
+     opening conversation that makes these, from the archetype the creation
+     dialog left in the hero's field 0x20, and a save made anywhere else
+     never hears it. */
+  // `things` is [{ type, d3 }], each a thing the hero carries: first byte
+  // 0x10, as the amulet the king gives is in a save written after he has.
+  if ((o.skills && o.skills.length) || (o.things && o.things.length)) {
+    const recs = parseDelverPropList(list);
+    for (const k of o.skills || []) recs.push({ flags: o.skillFlags, x: 0, y: 1, aspect: k.aspect & 0x1F, rotated: 0, proptype: k.type, d3: 0, storeref: 0, tail: '000000000000' });
+    for (const k of o.things || []) recs.push({ flags: 0x10, x: 0, y: 1, aspect: 0, rotated: 0, proptype: k.type, d3: k.d3 & 0xFFFF, storeref: 0, tail: '000000000000' });
+    list = writeDelverPropList(recs);
+  }
+  // `charFlags` is [{ index, flag }]: a character flag under 8 is a bit of
+  // byte 8 of that character's record.
+  for (const c of o.charFlags || []) if (records[c.index] && c.flag >= 0 && c.flag < 8) records[c.index].state |= 1 << c.flag;
+  for (const k of ['proptype', 'aspect', 'body', 'reflex', 'mind', 'xp', 'health', 'healthMax', 'magic', 'magicMax', 'level', 'nutrition', 'training'])
+    if (o[k] !== undefined) hero[k] = o[k];
+  // The two fields the creation script sets beside aspect-and-proptype
+  // (0x24 and 0x25) are bytes 20 and 21, and field 0x20 is byte 29.
+  hero.raw[20] = (((hero.aspect & 0x3F) << 10 | (hero.proptype & 0x3FF)) >> 8) & 0xFF;
+  hero.raw[21] = hero.proptype & 0xFF;
+  if (o.archetype !== undefined) hero.raw[29] = o.archetype & 0xFF;
+  records[0].zone = zone;
+  /* Companions (8 October 2026): `party` is [{ index, x, y }]. Each is
+     stood in the hero's zone and given what a party member's record has
+     and the scenario's has not, measured on the three companions of a
+     player's save of 2001 against their shipped records: the bits of
+     byte 8 the hero's own record carries (0xC0, of which 0x40 is "in the
+     party"), behaviour 1 at byte 22, which is the follower's
+     (behaviours.md), and the hero's alignment at byte 25. Their other
+     differences in that save are wear: experience, level, what they
+     hold, and nutrition, which is given here as the hero's. A real save also has a Mons entry apiece; the game makes one
+     when it loads a file without (the run in game_check.mjs). */
+  for (const c of o.party || []) {
+    const r = records[c.index];
+    if (!r || c.index < 2 || !delverCharacterInUse(r)) return null;
+    r.zone = zone; r.x = c.x; r.y = c.y;
+    r.state = (r.state | hero.state) & 0xFF;
+    r.raw[22] = 1; r.raw[25] = hero.raw[25];
+    // Fed as the hero is: the shipped records have nutrition 0, and the
+    // first one made stood beside him with no food at all.
+    r.nutrition = hero.nutrition;
+  }
+  const f9 = writeDelverCharacterRecords(records);
+  const f6 = delverCharacterPropList(f9, zone);
+  const todo = new Uint8Array(2048);
+  for (let i = 0; i < 256; i++) todo.set([0, 0, 0, 0, 0x50, 0, 0xFF, 0xFF], i * 8);
+  // `todo` lines, [{ slot, line, resid, done }]: struck off or not, the day
+  // it was added, and a reference to the line of the text array.
+  for (const t of o.todo || []) {
+    const ref = (0x30000000 | ((t.line & 0x0FFF) << 16) | (t.resid & 0xFFFF)) >>> 0;
+    todo.set([t.done ? 1 : 0, 0, (o.day >> 8) & 0xFF, o.day & 0xFF, ref >>> 24, (ref >> 16) & 0xFF, (ref >> 8) & 0xFF, ref & 0xFF], (t.slot & 0xFF) * 8);
+  }
+  const heap = new Uint8Array(262144);
+  heap.set([(heap.length - 8) >>> 24, ((heap.length - 8) >> 16) & 0xFF, ((heap.length - 8) >> 8) & 0xFF, (heap.length - 8) & 0xFF]);
+  const m = parseDelverMap(map);
+  // 0x0400: the Char block is 110 bytes after its tag and length.
+  const g = new Uint8Array(118 + 8 * 3 + 8 + 1024);
+  const tag = (at, t, len) => { for (let i = 0; i < 4; i++) g[at + i] = t.charCodeAt(i); g[at + 4] = len >>> 24; g[at + 5] = (len >> 16) & 0xFF; g[at + 6] = (len >> 8) & 0xFF; g[at + 7] = len & 0xFF; };
+  const s16 = (at, v) => { g[at] = (v >> 8) & 0xFF; g[at + 1] = v & 0xFF; };
+  tag(0, 'Char', 114);
+  s16(8, o.karma); s16(12, o.difficulty); s16(14, o.header4);
+  g[80] = (o.clock >>> 24) & 0xFF; g[81] = (o.clock >> 16) & 0xFF; g[82] = (o.clock >> 8) & 0xFF; g[83] = o.clock & 0xFF;
+  s16(84, o.day);
+  tag(118, 'Mons', 4); tag(126, 'FXQ ', 4); tag(134, 'Wind', 4); tag(142, 'Grem', 1028);
+  for (let i = 0; i < 256; i++) g[150 + i * 4 + 1] = 2;
+  // The story so far: `values` is { n: v } over the 32 quest values, a byte
+  // each from +16 of the Char block (save-format.md).
+  for (const [n, v] of Object.entries(o.values || {})) if (+n >= 0 && +n < 32) g[16 + +n] = v & 0xFF;
+  // And `flags`, quest flags set: eight big-endian longs from +48.
+  for (const n of o.flags || []) if (n >= 0 && n < 256) g[48 + (n >> 5) * 4 + 3 - ((n & 31) >> 3)] |= 1 << (n & 7);
+  const res = [[0x0400, g], [0x0401, todo], [0x0404, new Uint8Array(20).fill(0xFF)], [0x8100 + zone, list],
+    [0x8200 + zone, new Uint8Array(Math.ceil(m.width / 8) * m.height)], [0x8800, portrait], [0xF009, f9],
+    [0xF00E, new Uint8Array(2048)], [0xF306, f6], [0xF307, heap], [0xF308, new Uint8Array(8192)]];
+  const base = delverArchiveSpec(arc.bytes);
+  return writeDelverArchive({ scenarioTitle: base.scenarioTitle, playerName: String(o.name || '').slice(0, 31),
+    formatMajor: base.formatMajor, formatMinor: base.formatMinor, unknown40: base.unknown40, unknown48: base.unknown48,
+    resources: res.map(([resid, data]) => ({ resid, data, encrypted: false })) });
+}
+
+/* A SCENARIO WITH AN EMPTY WORLD, made from the one open (8 October 2026):
+   the maintainer's "New scenario, with minimal Cythera Data file". It keeps
+   the rulebook and drops the places and the people.
+
+   What a new game reads was measured first, in the fork on the PowerPC
+   slice with every FSRead of the file logged, from launch to the first
+   save: 490 of the 1,558 resources, a fifth of the bytes (the workbench's
+   GRIMOIRE-NOTES.md, under `grimoire/october-list-kfw205`). In the order
+   read: the sound 0x9000; EVERY class of 0x10xx and 0x11xx, used or not;
+   every tile sheet 0x8Exx, twice; the 0xF0xx tables; the backdrop; the
+   creation dialog's four string tables 0x0203 to 0x0206; the portrait
+   picked; the creation script 0x1801 with its table 0x0501 and helpers;
+   the slideshow's text 0x0240 and pictures 0x8F80 to 0x8F87; the classes
+   0x1AF1 to 0x1AFF; and then the hero's zone alone, its map 0x80zz, list
+   0x81zz and entry script 0x14zz, and the king's conversation. No other
+   zone's resource is touched, which is why the others can go.
+
+   So, of the open scenario:
+
+     gone      every map 0x80xx, list 0x81xx and entry script 0x14xx but the
+               hero's zone's; every conversation 0x18xx but 0x1801, which
+               is the creation script and not a conversation
+     written   0x80zz, `width` by `height` of the one tile word, no roof
+               and no exits; 0x81zz, one record of zeros, since the writer
+               drops an empty resource and the program was not shown to
+               take a zone with no list, or the eggs of `eggs`, each
+               { x, y, type, behaviour }, one creature apiece; 0xF009 with every character but
+               record 0 and the hero zeroed, and the hero stood at (x, y);
+               0xF00B with no schedule for anyone
+     handed in `zoneScript`, the zone's entry script, and `creation`,
+               0x1801 as it is to be written. Both are code, which this
+               file does not write: the page assembles the first and cuts
+               the opening slideshow out of the second (newScenarioBytes)
+     kept      everything else, as it is
+
+   A file made this way started a new game in the fork, and the hero
+   walked and was saved (utilities/game_check.mjs). Kept scripts still name
+   the zones and people that are gone; the run met none, and none was
+   looked for beyond it. Zone 0 cannot be the zone: a character record's zone 0 is "placed
+   nowhere". Returns the file, or null when the scenario lacks a piece. */
+function buildNewScenario(arc, o) {
+  const base = delverArchiveSpec(arc.bytes);
+  if (!base) return null;
+  const f9 = base.resources.find(r => r.resid === 0xF009);
+  if (!f9) return null;
+  const records = parseDelverCharacterRecords(f9.data);
+  const hero = records[1];
+  if (!hero || !hero.zone) return null;
+  const zone = hero.zone, w = o.width | 0, h = o.height | 0;
+  if (w < 1 || h < 1 || w > 4096 || h > 4096 || o.x < 0 || o.y < 0 || o.x >= w || o.y >= h) return null;
+  if (!o.zoneScript || !o.zoneScript.length) return null;
+  hero.x = o.x; hero.y = o.y;
+  // The cast kept: `cast` is [{ index, x, y }], each a character of the open
+  // scenario stood in the zone as its record has it, with its conversation.
+  const stay = new Map();
+  for (const c of o.cast || []) if (c.index > 1 && records[c.index] && c.x >= 0 && c.y >= 0 && c.x < w && c.y < h) stay.set(c.index, c);
+  for (const [i, c] of stay) { records[i].zone = hero.zone; records[i].x = c.x; records[i].y = c.y; }
+  const cast = writeDelverCharacterRecords(records);
+  for (let i = 2; i * DELV_CHAR_RECORD < cast.length; i++) if (!stay.has(i)) cast.fill(0, i * DELV_CHAR_RECORD, (i + 1) * DELV_CHAR_RECORD);
+  // `tiles`, a map word a square, row by row, where the zone is somebody's
+  // drawing (a map brought in from another editor); else the one tile.
+  if (o.tiles && o.tiles.length !== w * h) return null;
+  const map = new Uint8Array(32 + w * h * 2);
+  map[0] = w >> 8; map[1] = w & 0xFF; map[2] = h >> 8; map[3] = h & 0xFF;
+  for (let i = 0; i < w * h; i++) { const t = o.tiles ? o.tiles[i] : o.tile; map[32 + i * 2] = (t >> 8) & 0xFF; map[33 + i * 2] = t & 0xFF; }
+
+  // The creatures asked for, each an egg certain to hatch with one creature
+  // in it, as the shipped hatcheries are written (save-format.md, *Kind 0
+  // is the hatchery*): the egg 0x42 with 100 in Data2, and the record it
+  // holds 0x08, its location's low half-word the egg's index plus 0x100
+  // under a 1, its Data1 the behaviour the creature starts with.
+  // An egg may ask for a chance under 100 and a stock over 1. Things placed
+  // (`props`, each { x, y, type, aspect, rotated }) come after the eggs, as
+  // plain records on the floor with no data.
+  const eggs = [];
+  for (const e of o.eggs || []) {
+    if (e.x < 0 || e.y < 0 || e.x >= w || e.y >= h) continue;
+    const hold = 0x10000 | (eggs.length + 0x100), rec = (flags, x, y, d1, d2) =>
+      ({ flags, x, y, aspect: 0, rotated: 0, proptype: e.type, d3: (d1 << 8) | d2, storeref: 0, tail: '000000000000' });
+    eggs.push(rec(0x42, e.x, e.y, 0, e.chance === undefined ? 100 : e.chance & 0xFF), rec(0x08, hold >> 12, hold & 0xFFF, e.behaviour, e.count === undefined ? 1 : e.count & 0xFF));
+  }
+  for (const p of o.props || []) {
+    if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue;
+    eggs.push({ flags: 0, x: p.x, y: p.y, aspect: p.aspect & 0x1F, rotated: p.rotated ? 1 : 0, proptype: p.type, d3: 0, storeref: 0, tail: '000000000000' });
+  }
+  const list = eggs.length ? writeDelverPropList(eggs) : new Uint8Array(16);
+  const made = new Map([[0x8000 + zone, map], [0x8100 + zone, list], [0x1400 + zone, o.zoneScript],
+    [0xF009, cast], [0xF00B, new Uint8Array(512)]]);
+  if (o.creation) made.set(0x1801, o.creation);
+  const gone = rid => { const k = rid >> 8; return k === 0x80 || k === 0x81 || k === 0x14 || (k === 0x18 && rid !== 0x1801 && !stay.has(rid - 0x1800)); };
+  const resources = [];
+  for (const r of base.resources) {
+    if (made.has(r.resid)) { resources.push(Object.assign({}, r, { data: made.get(r.resid) })); made.delete(r.resid); }
+    else if (!gone(r.resid)) resources.push(r);
+  }
+  // A piece the scenario did not have takes the encryption its range has:
+  // scripts are stored encrypted by their id, maps and lists plain.
+  for (const [resid, data] of made) resources.push({ resid, data, encrypted: resid < 0x8000 });
+  return writeDelverArchive(Object.assign({}, base, { resources }));
 }
 
 function writeDelverPropList(records) {
