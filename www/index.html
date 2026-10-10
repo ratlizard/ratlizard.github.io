@@ -554,7 +554,11 @@ function idb(mode, fn) {
 }
 function listSaves() { return idb('readonly', st => st.index('game').getAll(gameId)); }
 function putSave(rec) { rec.key = gameId + '\u0000' + rec.path; rec.game = gameId; return idb('readwrite', st => st.put(rec)); }
-function deleteSave(path) { return idb('readwrite', st => st.delete(gameId + '\u0000' + path)); }
+// A record is deleted by the key it was stored under, never one rebuilt from
+// gameId: until the game has been fetched gameId is null, an index asked for
+// null answers with every record of every game, and a key built from null
+// matches none of them, so Delete asked, deleted nothing and left the row.
+function deleteSave(rec) { return idb('readwrite', st => st.delete(rec.key)); }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 
 function allocBytes(u8) { const p = wasm.cw_alloc(u8.length); new Uint8Array(mem.buffer, p, u8.length).set(u8); return p; }
@@ -652,7 +656,7 @@ async function renderSaves() {
       const blob = new Blob([toMacBinary(rec)], { type: 'application/x-macbinary' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = rec.path.split('/').pop() + '.bin'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     } else if (confirm(`Delete the stored copy of ${rec.path.split('/').pop()}? The running game keeps its own until the page reloads.`)) {
-      await deleteSave(rec.path); renderSaves();
+      await deleteSave(rec); renderSaves();
     }
   };
 }
@@ -1139,7 +1143,7 @@ async function qtRestart(file) {
 // nothing can be written in place.
 function listPatches() { return idbPatch('readonly', st => st.index('game').getAll(gameId)); }
 function putPatch(rec) { rec.key = gameId + '\0' + rec.name; rec.game = gameId; return idbPatch('readwrite', st => st.put(rec)); }
-function deletePatch(name) { return idbPatch('readwrite', st => st.delete(gameId + '\0' + name)); }
+function deletePatch(rec) { return idbPatch('readwrite', st => st.delete(rec.key)); }
 
 function findPath(name) {
   const n = new TextEncoder().encode(name);
@@ -1273,7 +1277,7 @@ async function renderPatches() {
     : '';
   patchTable.onclick = async e => {
     const b = e.target.closest('button'); if (!b) return;
-    await deletePatch(recs[+b.dataset.i].name);
+    await deletePatch(recs[+b.dataset.i]);
     renderPatches();
     if (confirm('Removed. Reload the page to play the game unpatched?')) location.reload();
   };
