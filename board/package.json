@@ -1,0 +1,12 @@
+{
+  "name": "cythera-board",
+  "private": true,
+  "description": "The player packed as a Board web app; see pack.sh",
+  "dependencies": {
+    "@board.fun/web-sdk": "^1.0.0-beta.5"
+  },
+  "devDependencies": {
+    "@board.fun/web-pack": "^1.0.0-beta.3",
+    "esbuild": "^0.24.0"
+  }
+}
