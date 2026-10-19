@@ -65,6 +65,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -107,6 +113,15 @@ name = "byteorder-lite"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f1fe948ff07f4bd06c30984e69f5b4899c516a3ef74f34df92a2df2ab535495"
+
+[[package]]
+name = "bzip2"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a53fac24f34a81bc9954b5d6cfce0c21e18ec6959f44f56e8e90e4bb7c346c"
+dependencies = [
+ "libbz2-rs-sys",
+]
 
 [[package]]
 name = "cfg-if"
@@ -290,15 +305,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ieee-apsqrt"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4328941c554aaeea28ca420cd1f10e932fa38874faf8c75e3ed184c64c5c6cec"
-dependencies = [
- "rustc_apfloat",
-]
-
-[[package]]
 name = "image"
 version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -311,6 +317,8 @@ dependencies = [
  "moxcms",
  "num-traits",
  "png",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -336,6 +344,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "libbz2-rs-sys"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34b357333733e8260735ba5894eb928c02ecc69c78715f01a8019e7fa7f2db4c"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,9 +369,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "m68k"
-version = "0.14.3"
+version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d147b9f460ceae5beb0ee82c186f70f15dd15e1de317187b7f018eff139626a9"
+checksum = "a6e4f48ab35e05ea00285865cd57f8346657100655e4bd54c69725c32bfabe12"
 
 [[package]]
 name = "md5"
@@ -443,11 +457,10 @@ dependencies = [
 
 [[package]]
 name = "ppc"
-version = "0.6.6"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0b7d1e66d3bae1dfd1d329efaac261f503c208ecaa4401101537fad5b21321f"
+checksum = "8cf2781f9ce9aabc2a1eb6c2459197c6d9954d213d157fbfc91c4eb0f1b14dfb"
 dependencies = [
- "ieee-apsqrt",
  "rustc_apfloat",
 ]
 
@@ -504,6 +517,15 @@ dependencies = [
  "bytemuck",
  "font-types",
  "once_cell",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -627,8 +649,10 @@ dependencies = [
 
 [[package]]
 name = "systemless"
-version = "0.73.0"
+version = "0.98.1"
 dependencies = [
+ "base64",
+ "bzip2",
  "clap",
  "flate2",
  "hfsplus",
@@ -636,6 +660,7 @@ dependencies = [
  "libm",
  "m68k",
  "ppc",
+ "roxmltree",
  "serde",
  "serde_json",
  "skrifa",
@@ -785,4 +810,19 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zune-core"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d56377fd46368984a170bc5aac5567e52ca5da874caa60bea39fcbca78fb658b"
+
+[[package]]
+name = "zune-jpeg"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
+dependencies = [
+ "zune-core",
 ]

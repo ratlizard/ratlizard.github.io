@@ -230,7 +230,7 @@ pub extern "C" fn cw_load(
 pub extern "C" fn cw_start() -> i32 {
     with_state(|s| match s.app.take() {
         Some(app) => {
-            game::init_game(&mut s.runner, &app);
+            game::init_game_owned(&mut s.runner, app);
             0
         }
         None => -1,
