@@ -4,7 +4,10 @@
 // small box in the top-right corner, which `board-connect screenshot` shows.
 import { Board, BoardContactPhase } from "@board.fun/web-sdk";
 
-window.BoardSDK = Board;
+// web-pack stops unless window.BoardSDK appears somewhere in the bundle's
+// text. It is the Board's native bridge: read here, never set, because the
+// SDK reports isOnDevice as true whenever it exists.
+console.log(`[board-probe] bridge: ${typeof window.BoardSDK}`);
 
 const seen = { pointerdown: 0, touchstart: 0, mousedown: 0, click: 0, keydown: 0, boardBegan: 0 };
 const facts = {};
