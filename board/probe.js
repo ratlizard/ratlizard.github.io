@@ -3,6 +3,7 @@
 // writes to the console, which `board-connect logs <appId>` reads, and to a
 // small box in the top-right corner, which `board-connect screenshot` shows.
 import { Board, BoardContactPhase } from "@board.fun/web-sdk";
+import { startTouchAdapter } from "./touch.js";
 
 // web-pack stops unless window.BoardSDK appears somewhere in the bundle's
 // text. It is the Board's native bridge: read here, never set, because the
@@ -81,7 +82,9 @@ if (navigator.storage && navigator.storage.estimate) {
 }
 
 if (Board.isOnDevice) {
+  const replay = startTouchAdapter(Board.input, (how) => fact("touch", how));
   Board.input.subscribe((contacts) => {
+    replay(contacts);
     for (const c of contacts) {
       if (c.phase === BoardContactPhase.Began) {
         seen.boardBegan++;
