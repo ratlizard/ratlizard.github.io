@@ -10,15 +10,43 @@ import { startProbe } from "./probe.js";
 import { startTouchAdapter } from "./touch.js";
 import { addKeyboard } from "./keyboard.js";
 import { startSaveMirror } from "./saves.js";
+import { startRemote } from "./remote.js";
 
 console.log(`[board] bridge: ${typeof window.BoardSDK}`);
-const probe = startProbe(Board);
+// The box of facts covers part of the game, so only a test build shows it;
+// every build logs them.
+const probe = startProbe(Board, { show: !!REMOTE_URL });
+
+// BUNDLED_TUNES is set by pack.sh when the game's tunes, already played
+// through QuickTime 3's instruments, are packed in tunes/. Without them the
+// page renders the tunes at every launch, since the Board clears the page's
+// storage, and on the Board that is about a minute of music on the wrong
+// instruments. Turning off the page's QuickTime setting skips the rendering,
+// and the page's restoreMusic (patched by pack.sh) adds these to the tunes
+// from its Music store.
+if (BUNDLED_TUNES) {
+  try { localStorage.setItem("qtmusic", "0"); } catch (e) {}
+  window.boardTunes = async () => {
+    const names = await (await fetch("tunes/index.json")).json();
+    const recs = [];
+    for (const name of names) {
+      const bytes = new Uint8Array(await (await fetch(`tunes/${name}`)).arrayBuffer());
+      recs.push({ checksum: parseInt(name, 16), bytes });
+    }
+    console.log(`[board] ${recs.length} tunes from the bundle`);
+    return recs;
+  };
+}
 
 // The pads show only in the page's touch mode, which the page turns on for a
 // coarse pointer. Whether the Board's browser reports one is unknown, and the
 // Board is played by finger either way.
 document.body.classList.add("touch");
 addKeyboard();
+
+// REMOTE_URL is set by pack.sh: null, or the address of remote_server.mjs
+// for a test build.
+if (REMOTE_URL) startRemote(REMOTE_URL, probe.fact);
 
 if (Board.isOnDevice) {
   const replay = startTouchAdapter(Board.input, (how) => probe.fact("touch", how));

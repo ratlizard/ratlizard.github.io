@@ -4,7 +4,7 @@
 // shows.
 import { BoardContactPhase } from "@board.fun/web-sdk";
 
-export function startProbe(Board) {
+export function startProbe(Board, { show = true } = {}) {
   const seen = { pointerdown: 0, touchstart: 0, mousedown: 0, click: 0, keydown: 0, boardBegan: 0 };
   const facts = {};
   const box = document.createElement("pre");
@@ -37,8 +37,17 @@ export function startProbe(Board) {
     }, { capture: true, passive: true });
   }
 
+  // The page logs only the message of an uncaught error, and every panic in
+  // the module has the message "unreachable"; the stack shows which call it was.
+  window.addEventListener("error", (e) => {
+    if (e.error && e.error.stack) console.log(`[board-probe] stack: ${e.error.stack}`);
+  });
+
   fact("userAgent", navigator.userAgent);
   fact("onDevice", Board.isOnDevice);
+  // "Linux armv8l" is a 32-bit browser on a 64-bit processor, "Linux aarch64"
+  // a 64-bit one; a 32-bit one has far less room for the module's heap.
+  fact("platform", `${navigator.platform}, ${navigator.hardwareConcurrency} cores, ${navigator.deviceMemory ?? "?"} GB`);
   fact("window", `${innerWidth}x${innerHeight} dpr ${devicePixelRatio}, screen ${screen.width}x${screen.height}`);
   fact("coarse pointer", matchMedia("(pointer: coarse)").matches);
   fact("WebAssembly", typeof WebAssembly === "object");
@@ -80,7 +89,7 @@ export function startProbe(Board) {
     navigator.storage.estimate().then((q) => fact("storage quota MB", Math.round(q.quota / 1e6)));
   }
 
-  document.body.appendChild(box);
+  if (show) document.body.appendChild(box);
   show();
 
   return {
