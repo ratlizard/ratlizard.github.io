@@ -28,10 +28,11 @@ cp -R "$www/delv" "$www/qt-music.js" dist/
 cp "$WASM" dist/cythera_web.wasm
 [ -z "$GAME" ] || cp -L "$GAME" dist/game.sit
 cp "$MODEL" dist/model.tflite
-npx esbuild probe.js --bundle --format=iife --outfile=dist/board-probe.js --log-level=warning
-# The probe goes in first, so it counts every event the page sees.
-sed 's#<script src="delv/mac-bytes.js"></script>#<script src="board-probe.js"></script>\n&#' \
+npx esbuild board.js --bundle --format=iife --outfile=dist/board.js --log-level=warning
+# board.js goes after the markup and before every other script, for the
+# reason in the comment at the top of board.js.
+sed 's#<script src="delv/mac-bytes.js"></script>#<script src="board.js"></script>\n&#' \
   "$www/index.html" > dist/index.html
-grep -q 'board-probe.js' dist/index.html
+grep -q 'src="board.js"' dist/index.html
 
 npx web-pack dist --name Cythera --model model.tflite -o cythera.webapp.zip
