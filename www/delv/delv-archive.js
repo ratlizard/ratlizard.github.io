@@ -227,7 +227,7 @@ function describeDelverArchive(bytes) {
   }
   if (!populated)
     return { ok: false, title, player, populated, reason: 'the master index at 0x' + mi.first.toString(16).toUpperCase() +
-      ' names no subindex at all' };
+      ' points at no subindex at all' };
   return { ok: true, title, player, populated };
 }
 
@@ -352,12 +352,65 @@ function extractDelverArchive(bytes, opts) {
   const zipped = fromZip(bytes);
   if (zipped) return zipped;
 
-  /* StuffIt X and Compact Pro are the two formats the community's add-ons use
-     that this page does not open. Named, so the refusal says what to do
-     rather than that no title string was found at byte 0. */
+  /* A StuffIt X archive (js/mac-stuffitx.js, since 13 October 2026): three
+     of the community's saved games come as one. Read as a StuffIt archive
+     is -- the first entry whose data fork is a Delver archive wins, a fork
+     that will not decompress is stepped over and named -- and guarded the
+     same way, since the browser player vendors this file without that one,
+     and there the refusal below still names the format. */
   const UNPACK_IT = ', which this page does not open. Unpack it with The Unarchiver or StuffIt Expander and open the file inside.';
   const isStuffItX = buf => typeof looksLikeStuffItX === 'function' && looksLikeStuffItX(buf);
-  if (isStuffItX(bytes)) throw new Error('That is a StuffIt X archive (.sitx)' + UNPACK_IT);
+  const fromStuffItX = (buf, wrapper) => {
+    if (!isStuffItX(buf) || typeof parseStuffItXArchive !== 'function') return null;
+    let arc = null;
+    try { arc = parseStuffItXArchive(buf); }
+    catch (e) { notes.push('a StuffIt X archive that will not read: ' + e.message); return null; }
+    const where = 'StuffIt X archive' + (wrapper ? ' in ' + wrapper : '');
+    const refused = [], found = [];
+    for (const e of arc.entries) {
+      if (e.isFolder || !e.dataLen) continue;
+      let data;
+      try { data = stuffItXFork(buf, e, 'data'); }
+      catch (err) { refused.push(e.name + ' (' + err.message.replace(/^StuffIt X: /, '') + ')'); continue; }
+      const d = describeDelverArchive(data);
+      if (!d.ok) { notes.push('"' + e.name + '" in the ' + where + ', ' + d.reason); continue; }
+      found.push({ entry: e, data, info: d, rsrc: () => { try { return stuffItXFork(buf, e, 'rsrc'); } catch (err) { return null; } } });
+    }
+    if (refused.length) notes.push('in the ' + where + ', could not decompress ' + refused.join(', '));
+    return pickContained(found, where, opts.pick);
+  };
+  const sitx = fromStuffItX(bytes, '');
+  if (sitx) return sitx;
+  if (isStuffItX(bytes) && typeof parseStuffItXArchive !== 'function') throw new Error('That is a StuffIt X archive (.sitx)' + UNPACK_IT);
+
+  /* A Compact Pro archive (js/mac-compactpro.js, since 14 October 2026), the
+     one format among the add-ons the three above do not cover: the Cythera
+     Makeover kit is a Compact Pro self-extractor, its archive in the data
+     fork of a MacBinary copy. Read as the others are, and guarded the same
+     way. */
+  const isCompactPro = buf => typeof looksLikeCompactPro === 'function' && looksLikeCompactPro(buf);
+  const fromCompactPro = (buf, wrapper) => {
+    if (!isCompactPro(buf)) return null;
+    let arc = null;
+    try { arc = parseCompactProArchive(buf); }
+    catch (e) { notes.push('a Compact Pro archive that will not read: ' + e.message); return null; }
+    const where = 'Compact Pro archive' + (wrapper ? ' in ' + wrapper : '');
+    const refused = [], found = [];
+    for (const e of arc.entries) {
+      if (e.isFolder || !e.dataLen) continue;
+      let data;
+      try { data = e.read('data'); }
+      catch (err) { refused.push(e.name + ' (' + err.message.replace(/^"[^"]*" /, '') + ')'); continue; }
+      const d = describeDelverArchive(data);
+      if (!d.ok) continue;
+      found.push({ entry: e, data, info: d, rsrc: () => { try { return e.read('rsrc'); } catch (err) { return null; } } });
+    }
+    if (refused.length) notes.push('in the ' + where + ', could not decompress ' + refused.join(', '));
+    if (!found.length) notes.push('nothing in the ' + where + ' is a Delver archive');
+    return pickContained(found, where, opts.pick);
+  };
+  const cpt = fromCompactPro(bytes, '');
+  if (cpt) return cpt;
 
   // sniffMacContainer knows the order these have to be tried in, and why.
   const forks = sniffMacContainer(bytes);
@@ -378,16 +431,20 @@ function extractDelverArchive(bytes, opts) {
     for (const which of ['data', 'rsrc']) {
       const buf = forks[which];
       if (!buf || !buf.length) continue;
-      const inner = fromStuffIt(buf, kind);
+      const inner = fromStuffIt(buf, kind) || fromStuffItX(buf, kind) || fromCompactPro(buf, kind);
       if (inner) { inner.forks.outer = forks; return inner; }
     }
     const t = (forks.type || '').trim(), c = (forks.creator || '').trim();
     const holding = 'That is a ' + kind + ' file' + (forks.name ? ' holding "' + forks.name + '"' : '');
-    if (isStuffItX(forks.data)) throw new Error(holding + ', a StuffIt X archive' + UNPACK_IT);
+    if (isStuffItX(forks.data) && typeof parseStuffItXArchive !== 'function') throw new Error(holding + ', a StuffIt X archive' + UNPACK_IT);
     // An application is only the Cythera application when its creator says
     // so. 'EXTR' is Compact Pro's self-extractor, which is what the one .sea
-    // among the add-ons is.
-    if (t === 'APPL' && c === 'EXTR') throw new Error(holding + ', a Compact Pro self-extracting archive' + UNPACK_IT);
+    // among the add-ons is: read, when mac-compactpro.js is here, and found
+    // to hold neither Cythera Data nor a saved game.
+    if (t === 'APPL' && c === 'EXTR') {
+      if (isCompactPro(forks.data)) throw new Error(holding + ', a Compact Pro self-extracting archive with no Cythera Data or saved game in it. [' + notes.join('; ') + ']');
+      throw new Error(holding + ', a Compact Pro self-extracting archive' + UNPACK_IT);
+    }
     throw new Error(holding +
       (t ? " (type '" + t + "', creator '" + c + "')" : '') +
       (t === 'APPL' && c === 'Delv' ? ', which is the Cythera application, not its data.' : t === 'APPL' ? ', which is an application, not an archive.' : '.') +
@@ -1338,7 +1395,7 @@ function mergeDelverPatch(baseBytes, patchBytes) {
   if (patch.scenarioTitle !== base.scenarioTitle)
     throw new Error('that patch is for ' + JSON.stringify(patch.scenarioTitle) +
                     ', and this game is ' + JSON.stringify(base.scenarioTitle));
-  if (!patch.resources.length) throw new Error('that patch holds no resources');
+  if (!patch.resources.length) throw new Error('that patch has no resources');
 
   const byId = new Map(base.resources.map(r => [r.resid, r]));
   const replaced = [], added = [], skipped = [], disagreed = [];
@@ -1689,7 +1746,7 @@ function describeDelverPatch(baseSpec, patchSpec) {
 
   const reasons = [];
   if (patchSpec.playerName)
-    reasons.push('it carries a player name, so it is a saved game rather than a patch');
+    reasons.push('it has a player name, so it is a saved game rather than a patch');
   if (patchSpec.scenarioTitle !== baseSpec.scenarioTitle)
     reasons.push('it is for ' + JSON.stringify(patchSpec.scenarioTitle) +
                  ' and this file is ' + JSON.stringify(baseSpec.scenarioTitle));
@@ -1700,7 +1757,7 @@ function describeDelverPatch(baseSpec, patchSpec) {
     reasons.push('it needs format minor ' + patchSpec.formatMinor +
                  ' and this file is ' + baseSpec.formatMinor);
   if (desc && !desc.lengthAgrees)
-    reasons.push('its descriptor states ' + desc.statedLength + ' bytes and Magpie takes only ' +
+    reasons.push('its descriptor states ' + desc.statedLength + ' bytes and Magpie accepts only ' +
                  DELV_PATCH_DESCRIPTOR_LENGTH);
   if (desc && !desc.selfOffsetAgrees)
     reasons.push('its descriptor was written for another file: it names offset ' +

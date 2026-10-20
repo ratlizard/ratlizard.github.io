@@ -9,7 +9,7 @@
    QuickTime 3 CD (item `apple-quicktime-3`). The CD is a hybrid: its Mac
    half is HFS, which archive.org cannot open, so the whole 15 MB image would
    have to come down; its PC half is ISO 9660, which archive.org opens and
-   serves a file at a time through /cors/. The PC half holds one file,
+   serves a file at a time through /cors/. The PC half contains one file,
    QUICKTIM.EXE, a self-extracting zip whose one entry, `data.z`, is this
    format, and one of its 21 files is `QuickTimeMusicalInstruments.qtx`: a
    few hundred bytes of Windows stub with the Mac resource fork after it
@@ -17,7 +17,7 @@
    byte the QuickTime 4.0 Mac set's, so this is the Mac sound, reached by a
    Windows road.
 
-   THE ARCHIVE, as read off QUICKTIM.EXE's own (no specification was used,
+   THE ARCHIVE, as read off QUICKTIM.EXE's (no specification was used,
    and none is on the disk). Little-endian throughout.
      header, 255 bytes: u32 0x8C655D13 at 0; u16 file count at 0x0C;
        u32 directory table offset at 0x29; u16 directory count at 0x31;
@@ -26,7 +26,7 @@
      file entry: u16 directory index at +1; u32 size at +3; u32 packed size
        at +7; u32 offset of the packed data at +11; u16 entry length at +23;
        u8 name length at +29, the name at +30.
-   The reading was proved by the numbers agreeing with one another: each
+   The reading was proved by the numbers matching one another: each
    file's offset is the one before plus its packed size, the first is 255,
    and the instruments come out at the size the table gives and open as a
    resource fork whose instruments match the Mac copy.
@@ -38,8 +38,8 @@
    a bit stream, least significant bit first: a 0 is a literal, a 1 a match
    whose length and distance are Huffman coded with fixed tables. Every file
    in QuickTime 3's archive has uncoded literals, so the coded-literal table
-   is not carried and a stream that asks for it is refused by name: a table
-   typed from memory with nothing to hold it to would be a guess.
+   is not included and a stream that uses it throws, by name: a table
+   typed from memory with nothing to check it against would be unverified.
 
    Classic script; the page's global scope. */
 

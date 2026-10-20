@@ -2,8 +2,8 @@
    played through them.
    =========================================================================
 
-   WHAT THE GAME SOUNDED LIKE. A QTMA tune holds notes and the instrument each
-   part asks for, never a sound. QuickTime played it through QuickTime Musical
+   WHAT THE GAME SOUNDED LIKE. A QTMA tune has notes and the instrument each
+   part requests, never a sound. QuickTime played it through QuickTime Musical
    Instruments, a set of 8-bit samples (Roland's "GM/GS Sound Set",
    copyright 1997) in an extension beside QuickTime. So the music as players
    heard it is these samples, and nothing General MIDI plays is it.
@@ -13,13 +13,13 @@
    the same 235 byte for byte: the Mac 4.0 copy from the Mac OS 9.0 image
    matched every one inside the Windows 3.0 copy archive.org serves. Cythera
    (1999) came after QuickTime 3, so it is that set this plays. Where the page
-   gets it is js/mac-installshield.js's header; how it is read is below.
+   fetches it is js/mac-installshield.js's header; how it is read is below.
 
    THE INSTRUMENTS ARE APPLE'S DOCUMENTED FORMAT, read from QuickTimeMusic.h
-   (cythera-reference/apple-documentation/qtma/), not guessed. Each 'ssai'
+   (cythera-reference/apple-documentation/qtma/), not inferred. Each 'ssai'
    resource is a QuickTime atom container: a 12-byte header, then atoms of
    { u32 size, type, u32 id, u16 0, u16 child count, u32 0 } and a body. Its
-   root 'sean' holds:
+   root 'sean' contains:
      'tone'  a ToneDescription: the name at +36, instrument and GM number at
              +68 and +72;
      'knbl'  an InstKnobList: count, flags, then { knob, value } pairs, the
@@ -34,22 +34,22 @@
    The resource id is the instrument number: 1 to 128 the General MIDI
    programs, bank * 128 + program the GS variations, 16384 + n the drum kits.
 
-   WHICH INSTRUMENT A PART GETS. Cythera's tunes ask for GS numbers in banks
+   WHICH INSTRUMENT A PART IS GIVEN. Cythera's tunes request GS numbers in banks
    80 and 81 (10455 is bank 81, program 87), which no set has, alongside the
-   GM number. QuickTime fell back to the GM number, as far as can be told
+   GM number. QuickTime fell back to the GM number, as far as can be determined
    without a recording to compare; the kits (16385, the Standard Kit) are in
-   the set as asked. `qtToneInstrument` is that rule.
+   the set as requested. `qtToneInstrument` is that rule.
 
    THE SYNTHESIS IS OURS, HELD TO QUICKTIME'S WHERE THAT IS READ, which
    since 6 October 2026 is most of it (the QuickTime Music extension of
-   QuickTime 4, whose PowerPC synthesizer names its routines; the
+   QuickTime 4, whose PowerPC synthesizer has named routines; the
    workbench's GRIMOIRE-NOTES.md, under grimoire/qt-instruments-v56peg).
-   From its code: each key range's sample and its own knobs over the
+   From its code: each key range's sample and its knobs over the
    instrument's; the volume envelope with its two scalings (QT_ENV); the
    pitch envelope; the volume and pitch LFOs and the mod wheel that
    deepens them; the velocity window and sensitivity, the pitch
    sensitivity, the transpose; the part's volume and expression, its pan
-   or the instrument's own with its key scaling, in the synthesizer's
+   or the instrument's with its key scaling, in the synthesizer's
    straight pan law; the wheel and the sustain pedal; a re-struck note and
    an exclusion group cutting what sounds, and the taking of a voice when
    none is free (QT_VOICES). Measured, not read: how a note's velocity
@@ -59,16 +59,16 @@
    Reverb setting is off by default, and a voice goes to the reverb bus
    only when it is on and the part's reverb controller is at its
    threshold or over. Portamento and the part and tune transposes: the
-   synthesizer takes them (controllers 5, 65, 40 and 41) and no shipped
+   synthesizer accepts them (controllers 5, 65, 40 and 41) and no shipped
    tune sends them. The "Overall Volume" knob: no instrument in the set
-   carries it. Envelope 1 and the filter: the set's instruments name no
+   has it. Envelope 1 and the filter: the set's instruments name no
    use for either. The output: the synthesizer measures the machine as it
    starts and picks its rate, its interpolation, mono or stereo and 8 or
    16 bits (MeasureMusicPerformance, TryConfiguration and
    SetSynthFeaturesByHardware, by their names; not read), so what a given
-   Mac played at is not in the file; this renders at the rate asked for,
+   Mac played at is not in the file; this renders at the rate requested,
    interpolating, in stereo. Controller 33, aftertouch, which the tunes
-   send some 4,300 times, is not among the fourteen the synthesizer takes.
+   send some 4,300 times, is not among the fourteen the synthesizer accepts.
 
    Classic script; the page's global scope. */
 
@@ -92,7 +92,7 @@ const QTMS_KNOB = { attack: 1, decay: 2, sustain: 3, keyToDecay: 5, release: 6, 
    8 release) multiplies the level each step by FixPow(1/65536, step over
    its time): it crosses a factor of 65,536, 96.3 dB, in its time, and a
    decay stops where it meets the sustain level. A stage whose bit is
-   clear moves in a straight line. With Infinite Sustain the level holds
+   clear moves in a straight line. With Infinite Sustain the level stays
    until the key comes up; without, it falls to nothing over the sustain
    time. A voice ends when its level is under 1/65,536. Every instrument
    in the set has Log Curves 14 and Infinite Sustain 1, and a knob an
@@ -100,20 +100,20 @@ const QTMS_KNOB = { attack: 1, decay: 2, sustain: 3, keyToDecay: 5, release: 6, 
    resource: decay 1,000 ms, sustain a half, sustain time 5,000 ms,
    release 180 ms, Log Curves 4, both scalings 1.
 
-   Before this the envelope was a guess from the knobs' names: a fall of
+   Before this the envelope was inferred from the knobs' names: a fall of
    72 dB in the decay time spread to end on the sustain level, the two
    scalings unused, and a kit's note played to its sample's end whatever
-   its length. The kit needs no rule of its own: its release is 40 s. */
+   its length. The kit needs no separate rule: its release is 40 s. */
 const QT_ENV = { span: 1 / 65536, floor: 1 / 65536 };
-/* HOW LOUD A NOTE IS, where the reading and the recordings disagree. The
-   synthesizer takes a note's level as (velocity + 1) / 128 times its
+/* HOW LOUD A NOTE IS, where the reading and the recordings differ. The
+   synthesizer computes a note's level as (velocity + 1) / 128 times its
    velocity sensitivity (StartNoteKeyrange; 100 per cent in every
    instrument), and multiplies it by the part's volumes and the envelope,
    all in straight proportion (Serve_This_One). Held to the soundtrack's
    "(Classic)" recordings of the eleven tunes, though, the square of that
    level is nearer than the level itself on every tune, by the spectrum,
    the onsets and the loudness contour, with this envelope as with the
-   guessed one (the workbench's tools/qtma-fit/). So something ahead of the
+   inferred one (the workbench's tools/qtma-fit/). So something ahead of the
    synthesizer would have to shape velocity, and nothing does: the tune
    player hands NAPlayNote the event's seven bits and the note allocator
    hands MusicPlayNote the same number (both 68K, in the same extension,
@@ -126,22 +126,22 @@ const QT_ENV = { span: 1 / 65536, floor: 1 / 65536 };
    the recordings sound like; a capture of the game playing in an
    emulated Mac would settle it. opts.velExp overrides it. */
 const QT_VELOCITY_POWER = 2;
-/* How many notes sound at once. The synthesizer asks for 14 by default
+/* How many notes sound at once. The synthesizer requests 14 by default
    ('SSkn': Requested Polyphony, 1 to 48) and then sets its features by the
    machine (SetSynthFeaturesByHardware), so what a given Mac had is not in
    the file. Held to the recordings, a limit of 14 is worse than none on
    three tunes (Seldane's spectrum 0.984 to 0.957) and 24 is the same as
    none, so whatever made the recordings had more than 14; 32 leaves the
-   tunes as they are and keeps the rule in play for a denser one. */
+   tunes as they are and leaves the rule in place for a denser one. */
 const QT_VOICES = 32;
 const QT_CUT_FRAMES = rate => Math.max(8, Math.round(rate * 0.004));
 
 /* A TUNE'S LAYOUT AND ITS READER. The bit fields are Apple's, from
    QuickTimeMusic.h (Universal Interfaces 3.3.1). Durations are in the
-   tune's own time scale, which Cythera sets to 600 a second (GMSInit).
+   tune's time scale, which Cythera sets to 600 a second (GMSInit).
    These were in js/page-export.js until 9 October 2026 and came here so
    that this file, with the readers it names, plays a tune without the
-   page: the browser player takes it as it is. */
+   page: the browser player reads it as it is. */
 // The time scale Cythera's GMSInit gives its tunes.
 const QTMA_UNITS_PER_SECOND = 600;
 const QTMA = {
@@ -236,7 +236,7 @@ function qParseTune(words){
         }
         const gm = qExtractGmFromNoteReq(nb);
         if (gm !== null) noteRequests[part] = gm;
-        // The whole request, for playing through QuickTime's own instruments
+        // The whole request, for playing through QuickTime's instruments
         // (js/mac-qtmusic.js), which a kit's 16385 needs and the GM number drops.
         if (nb.length >= 8+76)
           tones[part] = {instrument: u32be(nb, 8+68) | 0, gm: u32be(nb, 8+72) | 0};
@@ -268,7 +268,7 @@ function qtmaTune(data) {
   return { hdr, seq, tones: Object.assign({}, hdr.tones, seq.tones) };
 }
 
-/* The resource fork of a QuickTime extension. A Mac file's is its own; a
+/* The resource fork of a QuickTime extension. A Mac file has it as a fork; a
    Windows .qtx is a small PE image with the fork after its last section. */
 function qtxResourceFork(bytes) {
   if (bytes.length > 0x40 && bytes[0] === 0x4D && bytes[1] === 0x5A) {
@@ -309,8 +309,8 @@ function qtAtoms(bytes, start, end, depth, out) {
    resource: of the 1,544 key ranges in the QuickTime 3 set, the GS
    variations' borrow the base instrument's samples (an 'iref' beside the
    'sdsc' names it), and sample ids are unique across the whole set, so
-   `sampleOf(id)` looks one up wherever it is. A key range may carry a 'knbl'
-   of its own, which overrides the instrument's: 535 of them carry a whole
+   `sampleOf(id)` looks one up wherever it is. A key range may have a 'knbl'
+   which overrides the instrument's: 535 of them have a whole
    envelope, 319 a transpose (knob 0x12, semitones in 8.8). */
 function qtAtomicInstrument(bytes, sampleOf) {
   const atoms = qtAtoms(bytes, 12, bytes.length);
@@ -349,7 +349,7 @@ function qtAtomicInstrument(bytes, sampleOf) {
   for (const r of inst.regions) {
     r.knobs = Object.assign({}, inst.knobs, r.knobs);
     const raw = sampleOf(r.sampleId);
-    if (!raw) throw new Error('"' + inst.name + '" names sample ' + r.sampleId + ', which the set does not hold');
+    if (!raw) throw new Error('"' + inst.name + '" names sample ' + r.sampleId + ', which is not in the set');
     if (r.channels !== 1 || !((r.format === 'raw ' && r.bits === 8) || (r.format === 'twos' && r.bits === 16)))
       throw new Error('"' + inst.name + '" has a ' + r.channels + '-channel ' + r.bits + '-bit \'' + r.format + '\' sample');
     const n = Math.max(0, Math.min(r.length, (raw.length - r.offset) / (r.bits / 8) | 0));
@@ -362,7 +362,7 @@ function qtAtomicInstrument(bytes, sampleOf) {
 }
 
 /* A set of instruments from a resource fork: { ids, has(n), get(n) }.
-   Instruments are read the first time one is asked for; the samples' index
+   Instruments are read the first time one is requested; the samples' index
    is built across every instrument the first time any is. */
 function qtInstrumentLibrary(forkBytes) {
   const fork = openResourceFork(forkBytes);
@@ -408,16 +408,16 @@ function qtInstrumentsFromFile(bytes) {
   if (looksLikeInstallShield3(bytes)) {
     const arc = parseInstallShield3(bytes);
     const e = arc.entries.find(x => /QuickTimeMusicalInstruments\.qtx$/i.test(x.path));
-    if (!e) throw new Error('this installer does not hold QuickTimeMusicalInstruments.qtx');
+    if (!e) throw new Error('QuickTimeMusicalInstruments.qtx is not in this installer');
     return qtInstrumentLibrary(qtxResourceFork(installShield3File(bytes, e)));
   }
   return qtInstrumentLibrary(bytes);
 }
 
 /* QUICKTIM.EXE is a self-extracting zip whose central directory does not
-   agree with where its entries are (7-Zip says the same), so the one entry
-   is taken from its local header, which carries the sizes, and held to its
-   CRC-32. Returns null for an .exe that holds no data.z. */
+   match where its entries are (7-Zip reports the same), so the one entry
+   is taken from its local header, which has the sizes, and held to its
+   CRC-32. Returns null for an .exe that has no data.z. */
 function qtInstallerDataZ(exe) {
   const le16 = o => exe[o] | (exe[o + 1] << 8);
   const le32 = o => (exe[o] | (exe[o + 1] << 8) | (exe[o + 2] << 16) | (exe[o + 3] << 24)) >>> 0;
@@ -471,7 +471,7 @@ function qtmaRender(events, tones, lib, opts) {
     return parts[p];
   };
 
-  // Controllers and notes in time order. A voice takes the part's state
+  // Controllers and notes in time order. A voice is given the part's state
   // as it starts and follows the wheel and the mod wheel while it sounds.
   const ctlTimeline = {};
   for (const e of events) if (e.k === 'ctl') (ctlTimeline[e.part] = ctlTimeline[e.part] || []).push(e);
@@ -569,7 +569,7 @@ function qtmaRender(events, tones, lib, opts) {
        account is over QT_ENV). The volume envelope's attack is the knob's
        time times "Velocity To Attack Time" raised to the velocity over
        128, its decay the knob's times "Key To Decay Time" raised to the
-       key over 128. Envelope 2 has knobs of its own and no scaling; it is
+       key over 128. Envelope 2 has separate knobs and no scaling; it is
        the pitch envelope where knob 0x35 names it, as every instrument in
        the set does. */
     const ms = v => v / 1000 * rate;
@@ -621,7 +621,7 @@ function qtmaRender(events, tones, lib, opts) {
     let pos = 0, i = 0, step = 0, trem = 1;
     const v = { part: e.part, pitch: e.pitch, region, born: f0, group: knob(QTMS_KNOB.exclusionGroup, 0), stage: env.stage };
     // The pitch and the tremolo are worked out every 32 frames, under a
-    // millisecond, which is finer than the synthesizer's own step.
+    // millisecond, which is finer than the synthesizer's step.
     const control = () => {
       const t = i * msPerFrame;
       const semis = key - region.root + transpose + bend + lfoAt(lfoP, t, depthP()) + (penv ? penv.level * pitchEnvDepth : 0);
@@ -662,7 +662,7 @@ function qtmaRender(events, tones, lib, opts) {
       v.stage = 0;
     };
 
-    /* The voices, as StartNoteKeyrange takes one. A note struck again on
+    /* The voices, as StartNoteKeyrange receives one. A note struck again on
        its part and key while the last still sounds cuts the last, and so
        does a note of the same part in the same exclusion group, which is
        how a kit's closed hat stops its open one. Then a
@@ -710,13 +710,13 @@ function qtmaRender(events, tones, lib, opts) {
    synthesizer's type and name, the instrument's name, its number and its
    General MIDI number), then an end marker. After the description comes
    the sequence: a tempo marker, then rests, notes and controllers, and an
-   end marker. The shipped tunes also carry beat markers and "tune
+   end marker. The shipped tunes also have beat markers and "tune
    difference" events, which hold the controllers' state for a player that
    starts part way in; a player that starts at the start needs neither, and
    they are not written.
 
    WHAT IS TAKEN FROM THE TUNE BEING REPLACED, since nothing here should
-   know Cythera's files by heart: the sample description's flags, the
+   hard-code Cythera's files: the sample description's flags, the
    NoteRequestInfo and the synthesizer's type and name. A part's instrument
    name is the instrument library's when the page has it and empty
    otherwise; QuickTime finds an instrument by its number.
@@ -724,14 +724,14 @@ function qtmaRender(events, tones, lib, opts) {
    WHAT A MIDI FILE BECOMES. Times go through the file's tempo map to the
    tune's units, 600 a second in Cythera (QTMA_UNITS_PER_SECOND). Each
    channel and program that sounds a note is a part, at most 32, the count
-   a short event's part field holds. A program is General MIDI number
+   that fits in a short event's part field. A program is General MIDI number
    program + 1; channel 10 is the kit, instrument 16385. Controllers 1, 7,
    10, 11, 64 and 91, the pitch wheel and channel pressure become QuickTime's
    (8.8 fixed; pan 1 to 2; the wheel in semitones at the range the file
    sets, two by default). Everything else is counted and left out, and the
    count is returned so the page can say so.
 
-   utilities/midi_import_check.mjs holds this to the shipped tunes: each
+   utilities/midi_import_check.mjs checks this against the shipped tunes: each
    one's header rebuilt from what was read out of it is the shipped header
    byte for byte, and each tune made into MIDI and back has its notes and
    controllers where they were. */
@@ -745,8 +745,8 @@ function qtmaGeneral(part, subtype, bodyLongs) {
   const n = bodyLongs.length + 2;
   return [((0xF << 28) | (part << 16) | n) >>> 0, ...bodyLongs, ((3 << 30) | (subtype << 16) | n) >>> 0];
 }
-/* What a tune's header says of each part, and the description's flags: the
-   reading the writer is checked against, and where an import takes what it
+/* What a tune's header has for each part, and the description's flags: the
+   reading the writer is checked against, and where an import reads what it
    does not make up. */
 function qtmaHeaderParts(data) {
   const size = u32be(data, 0);
@@ -773,7 +773,7 @@ function qtmaHeaderParts(data) {
   }
   return { flags: u32be(data, 16), parts: Object.values(parts).sort((a, b) => a.part - b.part), size };
 }
-// A Pascal string in a field of 32 bytes, as the ToneDescription holds two.
+// A Pascal string in a field of 32 bytes, as the ToneDescription has two.
 function qtmaStr31(text) {
   const out = new Uint8Array(32);
   const t = String(text || '').slice(0, 31);
@@ -829,8 +829,8 @@ function qtmaWrite(parts, events, opts) {
 }
 
 /* A Standard MIDI File read: every channel event with its time in seconds,
-   through the file's own tempo map. Formats 0 and 1; a file in SMPTE time
-   is refused by name. */
+   through the file's tempo map. Formats 0 and 1; a file in SMPTE time
+   is rejected by name. */
 function midiRead(bytes) {
   if (fourcc(bytes, 0) !== 'MThd') throw new Error('not a MIDI file: it does not begin MThd');
   const format = u16be(bytes, 8), ntrk = u16be(bytes, 10), division = u16be(bytes, 12);
@@ -878,7 +878,7 @@ function midiRead(bytes) {
 }
 
 /* A MIDI file as a tune. opts.like is the tune being replaced (bytes), for
-   the fields a tune carries that a MIDI file has no word for; opts.name is
+   the fields a tune has that a MIDI file has no word for; opts.name is
    a function from an instrument number to its name, or absent;
    opts.unitsPerSecond the tune's clock. Returns { data, parts, notes,
    controllers, seconds, dropped }, dropped a count by reason. */

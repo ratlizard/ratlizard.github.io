@@ -11,7 +11,7 @@
  *
  * openResourceFork(bytes) returns a fork object rather than setting globals, so
  * two forks can be open at once -- which is the point of putting it here.
- * index.html holds the Cythera Data *data* fork open as the game archive and
+ * index.html has the Cythera Data *data* fork open as the game archive and
  * its *resource* fork at the same time, and the application's fork beside them.
  */
 
@@ -81,7 +81,7 @@ function openResourceFork(bytes) {
       // handle. They are meaningless in a file and nothing here reads them --
       // but Cythera's application fork has live ones in it, so a rewrite that
       // zeroed them would not come back byte-identical, and the writer below
-      // carries them through. See its header on the four junk fields.
+      // passes them through. See its header on the four junk fields.
       list.push({ id, name, attrs, dataOffRel, nameOff: nameOffSigned, handle: u32be(bytes, rp + 8) });
       rp += 12;
     }
@@ -97,7 +97,7 @@ function openResourceFork(bytes) {
     bytes, dataOff, mapOff, dataLen, mapLen, typeList, resourcesByType,
 
     // Reading a length costs nothing; copying the bytes does. A list only needs
-    // sizes, so it asks for this and never touches the payload.
+    // sizes, so it requests this and never touches the payload.
     sizeOf(type, entry) {
       const abs = dataOff + entry.dataOffRel;
       if (abs + 4 > bytes.length)
@@ -121,7 +121,7 @@ function openResourceFork(bytes) {
       return d;
     },
 
-    // Every resource, in type order, for a caller that wants to sweep the fork.
+    // Every resource, in type order, for a caller that needs to sweep the fork.
     all() {
       const out = [];
       for (const t of typeList) for (const e of resourcesByType[t.type]) out.push({ type: t.type, entry: e });
@@ -141,16 +141,16 @@ function openResourceFork(bytes) {
  *
  * The reader above has been here since the beginning; this is new, and it is
  * the piece that was standing between this repository and three things it
- * wanted. Putting another TrueType in place of the game's `sfnt` needs it
+ * needed. Putting another TrueType in place of the game's `sfnt` needs it
  * (the styles name the family, not the file). Building Cythera's preferences
  * file needs it, which is what turns the cheat keys from a thing that is
- * documented into a thing a visitor can switch on: the code `©gra` is refused
+ * documented into a thing a visitor can switch on: the code `©gra` is rejected
  * unless bit 0 of byte 3 of `'Pref'` 130 is set, and nothing in the game ever
  * sets it. And a fork is simply the other half of a Mac file, which this site
  * can otherwise only take apart.
  *
- * THE LAYOUT IS THE RESOURCE MANAGER'S OWN, and it is worth saying how it was
- * settled rather than guessed. Both of Cythera's forks were measured before a
+ * THE LAYOUT IS THE RESOURCE MANAGER'S, and it is worth recording how it was
+ * settled rather than assumed. Both of Cythera's forks were measured before a
  * line of this was written: the data area starts at 256 in each, every
  * resource sits flush against the one before it (450 gaps between resources
  * across the two files, every one of them zero -- no padding, no alignment),
@@ -168,7 +168,7 @@ function openResourceFork(bytes) {
  * Cythera's two forks they hold nonsense -- `121461076` for a handle -- and
  * they are where the installer's copy of the game and the BinHex copy differ
  * and nowhere else. A fork this writes fresh zeroes them, which is what a
- * clean writer should do; a fork being rewritten passes its own back through
+ * clean writer should do; a fork being rewritten passes its values back through
  * `opts` so the round trip is exact. Neither the Resource Manager nor anything
  * else reads them.
  *
@@ -206,7 +206,7 @@ function resourceForkSpec(fork) {
 function writeResourceFork(resources, opts) {
   opts = opts || {};
   const list = Array.isArray(resources) ? resources : resources.resources;
-  if (!Array.isArray(list)) throw new Error('writeResourceFork wants an array of resources');
+  if (!Array.isArray(list)) throw new Error('writeResourceFork expected an array of resources');
   const reserved = opts.reserved || (resources && resources.reserved) || null;
   const preamble = opts.mapPreamble || (resources && resources.mapPreamble) || null;
   const wantedTypes = opts.typeOrder || (resources && resources.typeOrder) || null;
@@ -236,10 +236,10 @@ function writeResourceFork(resources, opts) {
   for (const t of types) if (byType.get(t).length > 65536)
     throw new Error("more than 65,536 resources of type '" + t + "'");
 
-  /* The data area is written in `dataOffRel` order when every resource says
+  /* The data area is written in `dataOffRel` order when every resource records
      where it came from -- which is what a rewrite of an existing fork
      supplies -- and in array order otherwise, which is what a fork built from
-     nothing wants. The map is written in array order either way. */
+     nothing needs. The map is written in array order either way. */
   const placed = list.every(r => typeof r.dataOffRel === 'number')
     ? list.slice().sort((a, b) => a.dataOffRel - b.dataOffRel) : list;
   let dataLen = 0;
@@ -253,7 +253,7 @@ function writeResourceFork(resources, opts) {
   const typeListOff = 28;
   const refListsOff = typeListOff + 2 + types.length * 8;
   const nameListOff = refListsOff + list.length * 12;
-  /* Every named resource gets its OWN entry in the name list, even where two
+  /* Every named resource is given a SEPARATE entry in the name list, even where two
      share a name -- the Resource Manager does not pool them, and this is the
      one thing about the layout that had to be measured rather than reasoned
      out. Sharing them made this writer's output 19 bytes short on Cythera Data
@@ -266,7 +266,7 @@ function writeResourceFork(resources, opts) {
   const nameOf = r => (r.name === null || r.name === undefined || r.name === '') ? null : r.name;
   const named = list.filter(r => nameOf(r) !== null);
   const macOf = r => encodeMacRoman(nameOf(r)).slice(0, 255);
-  /* A FOURTH order. Where a resource says which offset its name had, the name
+  /* A FOURTH order. Where a resource records the offset its name had, the name
      goes back there; Cythera Data's name list is not in reference-list order
      and writing it that way moved two `eSTM` names eight bytes and nothing
      else. A fork built from nothing has no such offsets and the names are
@@ -278,8 +278,8 @@ function writeResourceFork(resources, opts) {
   const mapLen = nameListOff + nameBytes;
   // The map's fields are 24 bits for a data offset and 16 for a name or type
   // offset. Masking silently past them wrote a fork that read as another
-  // fork, so a size the format cannot hold is refused instead.
-  if (dataLen > 0xFFFFFF) throw new Error('a resource fork holds at most 16 MB of resource data, not ' + dataLen + ' bytes');
+  // fork, so a size the format has no room for throws instead.
+  if (dataLen > 0xFFFFFF) throw new Error('a resource fork has at most 16 MB of resource data, not ' + dataLen + ' bytes');
   if (mapLen > 0xFFFF) throw new Error('a resource map is at most 64 KB, not ' + mapLen + ' bytes');
   const out = new Uint8Array(dataOff + dataLen + mapLen);
 

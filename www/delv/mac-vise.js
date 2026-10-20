@@ -6,7 +6,7 @@
    the whole install tree -- the game, its data file, the Combat AI scripts,
    the documentation, the licence, the InputSprocket drivers -- with both forks
    of every file. `parseViseArchive()` reads that catalog and `viseExtract()`
-   gives back a file's two forks. Nothing here knows Cythera exists: it is the
+   gives back a file's two forks. Nothing here depends on Cythera: it is the
    installer's format, and a MacBinary of any VISE 3 installer opens the same
    way.
 
@@ -28,7 +28,7 @@
      (0 at the top, 1, 2), and reading it as a parent puts every second-level
      file into whichever directory happened to be listed second. The parent is
      the 32-bit directory ID at offset 84, matched against the ID each
-     directory record declares at ITS offset 24 (its own parent at 28; 2 is
+     directory record declares at ITS offset 24 (its parent at 28; 2 is
      the root). `viseExtract` was checked file by file against the installed
      folder.
    - Where a grouped file's resource fork is. VISE packs small files that sit
@@ -40,9 +40,9 @@
      the same offset applied to a second stream. The CRC settled it: with the
      fork taken from offset 104 every grouped file's checksum matches, and
      with it taken any other way none does. The flag, not the offsets, is
-     what says a file is grouped: in the 1.0.2 and 1.0.3 installers both
+     what marks a file as grouped: in the 1.0.2 and 1.0.3 installers both
      offset fields hold leftover memory for every ungrouped file (the same
-     two garbage words in each), and reading them as offsets asks for a fork
+     two garbage words in each), and reading them as offsets requests a fork
      four gigabytes into a six-megabyte stream. The 1.0.4 installer happens
      to have zeros there, which is how the offsets looked like the rule for
      a day.
@@ -62,7 +62,7 @@
    than a dependency -- the page has none and works from file:// -- with the
    stored-block alignment as a parameter, tried at 8 first and at 16 when that
    fails, which is the order systemless uses and covers the five streams in
-   this installer that standard zlib refuses. One more word-reader habit was
+   this installer that standard zlib rejects. One more word-reader habit was
    needed for the largest of the five: after a STORED block of odd length the
    next block header also begins on a word boundary, not the byte after.
 
@@ -97,7 +97,7 @@ const VISE_DEOBFUSCATION_TABLE = new Uint8Array([
 /* RFC 1951, decoded the way zlib's `puff` does it: canonical Huffman codes
  * held as a count-per-length table and a symbol list, one bit at a time.
  * Slower than a table-driven inflater and fast enough -- the 2.9 MB stream
- * that holds Cythera Data inflates in well under a second -- and small enough
+ * that contains Cythera Data inflates in well under a second -- and small enough
  * to read against the RFC in one sitting, which matters more here. */
 const INFLATE_LEN_BASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
 const INFLATE_LEN_EXTRA = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
@@ -130,13 +130,16 @@ function inflateBuildTable(lengths, n) {
  *
  *   storedAlign   8 for RFC 1951; 16 for VISE, whose STORED blocks begin on a
  *                 16-bit word boundary.
+ *   distBits      the width of a dynamic block's count of distance codes: 5
+ *                 for RFC 1951; 6 for StuffIt X's Deflate, the one way it
+ *                 differs (XADMaster's XADStuffItXDeflateVariant).
  *
  * Stops as soon as `expected` bytes exist, whatever the bitstream still
- * holds. Runs on past a final block if the output is still short and input
+ * has. Runs on past a final block if the output is still short and input
  * remains -- systemless found installers whose streams are several finished
  * DEFLATE members back to back, each starting on a word. Throws on a
  * malformed stream or on running out of input. */
-function inflateRaw(input, expected, storedAlign) {
+function inflateRaw(input, expected, storedAlign, distBits = 5) {
   const out = new Uint8Array(expected);
   let outPos = 0;
   let inPos = 0, bitBuf = 0, bitCnt = 0;
@@ -228,9 +231,9 @@ function inflateRaw(input, expected, storedAlign) {
       }
       done = codes(fixedLen, fixedDist);
     } else if (type === 2) {
-      const nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
-      if (nlen > 286 || ndist > 30) throw new Error('bad dynamic block counts');
-      const lengths = new Uint8Array(320);
+      const nlen = bits(5) + 257, ndist = bits(distBits) + 1, ncode = bits(4) + 4;
+      if (nlen > 286 || ndist > (distBits === 5 ? 30 : 64)) throw new Error('bad dynamic block counts');
+      const lengths = new Uint8Array(352);
       for (let i = 0; i < ncode; i++) lengths[INFLATE_CLEN_ORDER[i]] = bits(3);
       const lencode0 = inflateBuildTable(lengths, 19);
       let index = 0;
@@ -300,7 +303,7 @@ function looksLikeVise(bytes) {
  *   dataLen, rsrcLen           uncompressed, from the catalog: authoritative
  *   packedOffset, packedLen    the stream holding the data fork (or, for a
  *                              grouped file, both forks)
- *   rsrcPackedOffset, rsrcPackedLen   the resource fork's own stream, when
+ *   rsrcPackedOffset, rsrcPackedLen   the resource fork's stream, when
  *                              it has one; 0/0 for a grouped file
  *   dataOffset, rsrcOffset     where each fork starts inside the decoded
  *                              stream (0 for an ungrouped file)
@@ -375,7 +378,7 @@ function parseViseArchive(bytes) {
       need(nameLen, 'file name ' + index);
       const name = decodeMacRoman(bytes.subarray(cursor, cursor + nameLen));
       cursor += nameLen;
-      // A grouped file names an offset inside the shared stream for each
+      // A grouped file has an offset inside the shared stream for each
       // fork; an ungrouped file has its resource fork in a second stream
       // straight after the first.
       const rsrcPackedOffset = grouped || !rsrcLen ? 0 : packedOffset + packedLen;
@@ -416,8 +419,8 @@ function viseDecodeStream(packed, needed) {
 }
 
 /* The decoded bytes of the stream at `offset`, long enough to hold `needed`.
- * Cached per archive: a grouped stream is asked for by every file in it. The
- * cache keeps the longest decode asked for so far, so a later request for
+ * Cached per archive: a grouped stream is requested by every file in it. The
+ * cache retains the longest decode requested so far, so a later request for
  * more re-inflates rather than reading past the end. */
 function viseStream(archive, offset, length, needed) {
   const have = archive._streams.get(offset);
@@ -428,8 +431,8 @@ function viseStream(archive, offset, length, needed) {
 }
 
 /* Both forks of one entry, as fresh Uint8Arrays, and whether the catalog's
- * CRC agrees with them. A mismatch is reported, not thrown: the caller
- * decides whether a file it can see is worth keeping. */
+ * CRC matches them. A mismatch is reported, not thrown: the caller
+ * determines whether a file it can see is worth keeping. */
 function viseExtract(archive, entry) {
   let data = new Uint8Array(0), rsrc = new Uint8Array(0);
   if (entry.dataLen) {
@@ -451,8 +454,8 @@ function viseExtract(archive, entry) {
  * container mac-containers.js opens -- Bryce Schroeder's Cythera.bin is a
  * MacBinary of the installer application, type APPL creator VIS3 -- or
  * inside a StuffIt archive that stored it (mac-stuffit.js), which is how
- * archive.org and old.mac.gdn mirror it and how Ambrosia's own
- * Cythera_1.0.4_Installer.sit carries it. A StuffIt archive can hold
+ * archive.org and old.mac.gdn mirror it and how Ambrosia's
+ * Cythera_1.0.4_Installer.sit contains it. A StuffIt archive can hold
  * several: archive.org's "Cythera installers.sit" has 1.0.1 through 1.0.4
  * side by side. Returns
  *
@@ -463,8 +466,8 @@ function viseExtract(archive, entry) {
  * so a page can offer the others. Null for a file that is not an installer
  * at all, a container included, so extractDelverArchive can go on to treat
  * it as the archive itself. Throws when the bytes claim to be an installer
- * and its catalog cannot be read, and when a StuffIt archive holds one the
- * page cannot take out. */
+ * and its catalog cannot be read, and when a StuffIt archive contains one the
+ * page cannot extract. */
 function sniffViseInstaller(bytes, pick) {
   if (!bytes || !bytes.length) return null;
   if (looksLikeVise(bytes)) {

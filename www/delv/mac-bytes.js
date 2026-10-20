@@ -1,7 +1,7 @@
 /* mac-bytes.js — reading classic Mac bytes.
  *
  * Shared by index.html and the retired resource fork browser page. Both had
- * their own copy of every function here, and the Mac Roman table existed three
+ * a copy of every function here, and the Mac Roman table existed three
  * times in two files.
  *
  * LOAD ORDER: this file first. mac-containers.js, mac-media.js and
@@ -24,11 +24,11 @@
 /* Most try blocks on the site guard an optional decode: a resource the file
  * has not got, a fork that is absent, a picture that will not parse, a
  * browser without some API. Each used to fall back with an empty catch --
- * 135 of them on 18 September 2026 -- and nothing anywhere said so: a
- * visitor got a quieter page and no reason. quiet(e) is what an empty catch
- * says now. The failure is kept, once per distinct message with a count and
- * the line it came from, and the Tools sheet lists them (quietFailuresHTML
- * in js/page-views.js); uncaught errors arrive here too, from the listeners
+ * 135 of them on 18 September 2026 -- and nothing anywhere reported it: a
+ * visitor got a quieter page and no reason. quiet(e) now stands in for an
+ * empty catch. The failure is kept, once per distinct message with a count and
+ * the line it came from, and the Tools sheet shows them (quietFailuresHTML
+ * in js/page-views.js); uncaught errors come in here too, from the listeners
  * the page installs at boot. With window.LOUD_QUIET set -- the page's
  * ?loud=1, which utilities/browser_check.mjs passes -- each is also a
  * console warning, so a headless load can count them. The harnesses leave
@@ -125,8 +125,8 @@ function encodeMacRoman(s) {
 }
 
 /* ---- CRC-32 ------------------------------------------------------------ */
-/* One table, used by both the ZIP writer and the PNG writer -- they want the
- * same polynomial, and each file used to carry its own copy of it. */
+/* One table, used by both the ZIP writer and the PNG writer -- both use the
+ * same polynomial, and each file had a copy of it. */
 const CRC32_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {

@@ -11,7 +11,7 @@
  *   MacBinary (.bin)       binary, from BBSs and FTP
  *   AppleSingle/Double     binary, from A/UX, NFS and Mac OS X
  *
- * Both pages had their own BinHex and MacBinary decoders, and each had solved
+ * Both pages had separate BinHex and MacBinary decoders, and each had solved
  * a problem the other had not: one found the payload correctly in a file with
  * comment lines, the other handled a file with no resource fork. This is the
  * union of the two, plus AppleSingle, which neither had.
@@ -55,7 +55,7 @@ function looksLikeBinHex(bytes) {
 
 function binhexDecode(bytes) {
   /* The payload opens at the first ':' AFTER the banner, not the first ':' in
-   * the file. Copies mirrored from old FTP and BBS archives routinely carry
+   * the file. Copies mirrored from old FTP and BBS archives routinely have
    * comment lines above the banner -- a URL, a "Date:" header, an uploader's
    * signature -- and starting at the first colon truncates the payload to
    * whatever followed one of those. */
@@ -153,7 +153,7 @@ function macBinaryForks(b) {
 }
 
 /* ---- AppleSingle / AppleDouble ----------------------------------------- */
-/* A magic number and a table of numbered entries. AppleDouble holds only the
+/* A magic number and a table of numbered entries. AppleDouble has only the
  * parts that a foreign filesystem could not store, so its "data fork" entry is
  * usually absent -- the data lives in the plain file sitting next to it. */
 function appleSingleForks(b) {
@@ -197,16 +197,16 @@ function sniffMacContainer(bytes) {
 
 /* ---- Writing MacBinary ------------------------------------------------- */
 /* The one container this file can produce as well as open. MacBinary II is
- * the format that carries BOTH forks in one flat file and that emulators
+ * the format that has BOTH forks in one flat file and that emulators
  * accept by drag-and-drop, which is exactly what an edited archive needs --
  * a bare .data download loses the resource fork, and BinHex would mean
- * writing the RLE/6-bit encoder for no added carrying capacity.
+ * writing the RLE/6-bit encoder for no added capacity.
  *
  * The layout is the mirror of macBinaryForks above: version-0 byte, Pascal
  * name, type/creator, fork lengths at 83/87, forks 128-byte aligned after
  * the header. The MacBinary II extras are the version pair at 122/123 (129 =
  * "II", both as written-by and minimum-to-read) and the CRC-16/XMODEM of
- * bytes 0..123 at 124 -- the CRC is what lets a strict reader tell a real
+ * bytes 0..123 at 124 -- the CRC is what lets a strict reader distinguish a real
  * MacBinary II file from 128 bytes of coincidence, so it is computed, not
  * zeroed. Dates at 91/95 are seconds since the Mac epoch, 1904-01-01. */
 function crc16xmodem(bytes, start, end) {

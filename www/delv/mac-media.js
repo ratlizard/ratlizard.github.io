@@ -1,5 +1,5 @@
 /* mac-media.js — turning decoded pixels and samples back into files a modern
- * machine understands.
+ * machine reads.
  *
  * Needs mac-bytes.js (crc32). Load it first.
  *
@@ -15,7 +15,7 @@
  *   canvas.toBlob() writes a truecolour PNG and, depending on the engine,
  *   decorates it with an iCCP colour profile and sometimes an eXIf block. Both
  *   are actively harmful here: the profile makes a downstream tool colour-manage
- *   pixels that are already exactly the values wanted, and neither chunk carries
+ *   pixels that are already exactly the values needed, and neither chunk has
  *   the one thing that matters, which is the palette. So indexed art is written
  *   by hand as colour-type-3 with PLTE and, where there is a transparent slot,
  *   tRNS -- and nothing else, so a decoder reproduces the CLUT byte for byte.
