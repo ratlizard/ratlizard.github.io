@@ -4,19 +4,19 @@
 <title>Cythera, systemless, in the browser</title>
 <style>
   /* The page is exactly as tall as the phone shows and never scrolls: the bar
-     takes what it needs, the game takes the rest, and nothing can end up
+     is as tall as it needs, the game fills the rest, and nothing can end up
      below the fold. `dvh` rather than `vh` because on iOS `100vh` is the
      viewport with the browser's toolbars retracted -- taller than what is on
      the screen while they are up -- which put the bottom of the game, the
      character row among it, under the toolbar and out of reach. Keeping the
-     page unscrollable also keeps the toolbars up, so `dvh` stays put. */
+     page unscrollable also leaves the toolbars showing, so `dvh` stays put. */
   html, body { margin: 0; background: #111; color: #ddd; font: 13px/1.4 system-ui, sans-serif; height: 100%; overscroll-behavior: none; }
   body { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
   /* `viewport-fit=cover` gives the page the whole screen, the parts under the
-     phone's own furniture among it: in landscape an iPhone's camera housing
+     phone's furniture among it: in landscape an iPhone's camera housing
      covers about 59 px down one side, and the home indicator a strip along
-     the bottom. Only the pads knew about the bottom one and nothing knew
-     about the sides, so the first control in the bar, one of the two pads and
+     the bottom. Only the pads allowed for the bottom one and nothing allowed
+     for the sides, so the first control in the bar, one of the two pads and
      the leftmost column of the game itself sat under the housing whenever the
      phone was turned. Every edge that touches the screen now adds the inset
      for its side; on a phone with nothing in the way each `env()` is 0. */
@@ -25,7 +25,7 @@
   #barrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   /* The bar's controls were browser-default buttons on a dark ground, which
      read as an unfinished page rather than a quiet one. These are the same
-     controls, given the page's own colours. */
+     controls, in the page's colours. */
   #bar button, #bar .linkbtn { font: inherit; color: #ddd; background: #232323; border: 1px solid #3a3a3a; border-radius: 7px; padding: 5px 11px; cursor: pointer; -webkit-appearance: none; appearance: none; line-height: 1.3; }
   #bar .linkbtn { text-decoration: none; display: inline-block; }
   #bar button:hover:not(:disabled), #bar .linkbtn:hover { background: #2d2d2d; border-color: #4c4c4c; }
@@ -40,10 +40,10 @@
   #stat { color: #9a9a9a; }
   /* On a phone the bar's eight controls wrapped to two rows and took 76 px of
      a 720 px screen away from the game. One row that scrolls sideways
-     instead: nothing is lost and the game keeps the height. The row scrolls
+     instead: nothing is lost and the game has the full height. The row scrolls
      inside the bar rather than being the bar, so an arrow can sit over
-     either end of it saying there is more that way; the arrow is shown only
-     while there is, and a tap on it scrolls the row. */
+     each end of it, shown only while the row goes on past that end; a tap
+     on it scrolls the row. */
   @media (max-width: 700px) {
     #bar { padding: calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 6px calc(8px + env(safe-area-inset-left)); }
     #barrow { gap: 6px; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
@@ -64,7 +64,7 @@
            padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   /* A drag out of the game's inventory bar is a press, a move and a release,
      and iOS will take that gesture away as a text selection or a callout
-     unless it is told not to -- the pointer stream is cancelled part way and
+     unless the page prevents it -- the pointer stream is cancelled part way and
      the game sees a click rather than a drag. The pads say this for
      themselves; the canvas never did. */
   canvas { display: block; image-rendering: pixelated; width: 100%; height: 100%; object-fit: contain; touch-action: none; background: #000;
@@ -83,7 +83,7 @@
   /* The touch shell: shown only where the pointer is a finger. Two pads over
      the bottom corners of the canvas; the game's control bar sits at the
      bottom of its screen, so the pads are translucent and can be dragged by
-     their title to wherever the hand and the game agree. */
+     their title to wherever suits both the hand and the game. */
   #hud { display: none; position: fixed; inset: 0; pointer-events: none; touch-action: none; }
   body.playing.touch #hud { display: block; }
   .pad { position: absolute; pointer-events: auto; background: rgba(20,20,20,.55); border: 1px solid rgba(255,255,255,.25); border-radius: 10px; padding: 4px; user-select: none; -webkit-user-select: none; backdrop-filter: blur(2px); }
@@ -95,20 +95,20 @@
   /* A key with a word under it -- Type/keyboard, the pass key's hourglass over
      "pass" -- laid both parts out on one line, because `.k` is a flex row and
      only the Cheats panel's copy of the class ever turned it into a column.
-     `Type keyboard` wanted 78 px of a 58 px cell and spilled out of both sides
+     `Type keyboard` was 78 px wide in a 58 px cell and spilled out of both sides
      of it, over Return. Those two stack, which is what `.k small` was written
      for; the rest stay rows, because a flex container makes every child an
-     item and a column would put the bolded first letter on its own line. */
+     item and a column would put the bolded first letter on a line by itself. */
   .k.stacked { flex-direction: column; }
   .k:active, .k.held { background: rgba(255,220,120,.6); color: #000; }
   .k small { display: block; font-weight: 400; font-size: 10px; color: #bbb; margin-top: 2px; }
   .k.held small, .k:active small { color: #333; }
-  /* Each command is one of the game's own letter keys, and the key is the
+  /* Each command is one of the game's letter keys, and the key is the
      word's first letter every time. It was spelled out under the word --
-     "Get G", "Move M cancels" -- which said the same thing twice. The word's
-     own first letter carries it now, weighted and brightened; one word to a
+     "Get G", "Move M cancels" -- the same thing twice over. The key is
+     now the word's first letter, weighted and brightened; one word to a
      cell. (An earlier version of this comment blamed "Move M cancels" for the
-     pad overflowing its own box. It did not: measuring every cell put that on
+     pad overflowing its box. It did not: measuring every cell put that on
      Type with "keyboard" beside it, which is why those two stack. Left here
      because the wrong reading was a reading of the source, and the right one
      needed a measurement.) */
@@ -120,14 +120,14 @@
   body.touch .desktop-only { display: none; }
   /* The panels all sit under the bar and are scrolled if they are taller than
      what is left. Three things were wrong with that on a phone. `width` and
-     `max-height` are the content box unless told otherwise, so a panel asking
-     for 96vw came to 399 px on a 393 px screen and one asking for the window
+     `max-height` are the content box unless `box-sizing` is set, so a panel set
+     to 96vw came to 399 px on a 393 px screen and one set to the window
      less 60 px ended 10 px below the bottom of it -- the 10 px padding and the
-     border either side, both times. The 48 px top was a guess at the bar's
-     height, which is the guess the canvas made in 40 px and was wrong about by
+     border either side, both times. The 48 px top was an estimate of the bar's
+     height, the same estimate the canvas made in 40 px, and it was wrong by
      36 on a phone, so the bar is measured instead (`--bar`). And a panel
      centred on the window is not centred on what the window shows: in
-     landscape the camera housing takes a strip down one side. */
+     landscape a strip down one side is under the camera housing. */
   .panel { position: fixed; z-index: 5; box-sizing: border-box; overflow: auto;
     top: calc(var(--bar, 41px) + 7px);
     left: calc(8px + env(safe-area-inset-left)); right: calc(8px + env(safe-area-inset-right)); margin-inline: auto;
@@ -177,8 +177,8 @@
   <div class="row"><b>Cheats</b> <span class="dim">the game's cheat mode, read out of its executable</span> <button id="cheatclose">Close</button></div>
   <div class="row" id="cheatstatus"></div>
   <div class="row"><button id="cheatenable">Enable cheat mode in the preferences and reload</button> <span class="dim">sets bit 0 of the fourth byte of UI Prefs, which nothing in the game sets; the game reads it at launch</span></div>
-  <div class="row"><button id="cheatcode">Type the code (©gra)</button> <span class="dim">in the map window, with a game open; the log says "Cheat mode activated."</span></div>
-  <div class="row"><b>Cheat keys</b> <span class="dim">each is option plus a letter; the ones that ask a number read it from what you type next (Type button), in hex unless marked decimal</span></div>
+  <div class="row"><button id="cheatcode">Type the code (©gra)</button> <span class="dim">in the map window, with a game open; "Cheat mode activated." appears in the log</span></div>
+  <div class="row"><b>Cheat keys</b> <span class="dim">each is option plus a letter; where a key needs a number, the game reads what you type next (Type button), in hex unless marked decimal</span></div>
   <div id="cheatkeys" class="grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));"></div>
 </div>
 <div id="savespanel" class="panel" hidden>
@@ -212,7 +212,7 @@
   <div class="row"><b>Music</b> <span id="musicnote" class="dim"></span> <button id="musicclose">Close</button></div>
   <div class="row dim">Give it a zip, or files. Anything named <code>1A2B3C4D.mid</code> for the tune it replaces is taken at its word; anything else is put in track order and the first eleven become the game's eleven tunes. MIDI plays on the built-in instruments; recordings in any format this browser can decode are played as they are. The game still chooses which tune plays, when it starts and how loud it is. A tune already playing changes when it next starts.</div>
   <div class="row"><label><input type="checkbox" id="qtmusic" checked> Play the Game's Music on QuickTime's Instruments</label> <span id="qtnote" class="dim"></span></div>
-  <div class="row dim">The game's tunes hold notes, not sound. QuickTime played them on a set of sampled instruments, which this page fetches from archive.org's copy of the QuickTime 3 CD (7 MB, once). Until they arrive, the built-in instruments play. If the fetch fails, choose <code>QUICKTIM.EXE</code> or <code>QuickTimeMusicalInstruments.qtx</code> below.</div>
+  <div class="row dim">The game's tunes hold notes, not sound. QuickTime played them on a set of sampled instruments, which this page fetches from archive.org's copy of the QuickTime 3 CD (7 MB, once). The built-in instruments play until the download is done. If the fetch fails, choose <code>QUICKTIM.EXE</code> or <code>QuickTimeMusicalInstruments.qtx</code> below.</div>
   <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav,.exe,.qtx" multiple hidden></label></div>
   <div class="row"><select id="musicsource"></select> <a id="musicdownload" class="linkbtn" target="_blank" rel="noopener">Download</a> <button id="musicfetch">Fetch</button></div>
   <div class="row"><input id="musicurl" type="url" placeholder="https://… any other zip"> <button id="musicload">Fetch</button></div>
@@ -224,13 +224,13 @@
   <div class="row"><b>Patches</b> <span id="patchnote" class="dim"></span> <button id="patchclose">Close</button></div>
   <div class="row dim">A <b>Magpie patch</b> is the one add-on Cythera has: a file holding replacement art and text, merged into the game's data before it boots. The only one published is the Pumpkin Patch, which puts jack-o’-lanterns and autumn trees in the world. Nothing is written to your copy of the game — the merge happens here, each time the page loads.</div>
   <div class="row"><label><button id="patchfilebtn">Choose a patch file</button><input type="file" id="patchfile" hidden></label></div>
-  <div class="row dim">Give it the download as it comes — a <code>.hqx</code>, <code>.sit</code> or <code>.bin</code> is opened here, and so is a patch already out of its wrappers. Where a <code>.sit</code> holds several files, the first one in it that is a patch is the one taken.</div>
+  <div class="row dim">Give it the download as it comes — a <code>.hqx</code>, <code>.sit</code> or <code>.bin</code> is opened here, and so is a patch already out of its wrappers. Where a <code>.sit</code> has several files in it, the page uses the first that is a patch.</div>
   <div class="row"><table id="patchtable"></table></div>
 </div>
 <div id="log"></div>
 <button id="logcopy">Copy log</button>
 <!-- grimoire's Delver format code, copied verbatim; see delv/README.md. Plain
-     scripts defining globals, in dependency order, before the page's own. -->
+     scripts defining globals, in dependency order, before the page's scripts. -->
 <script src="delv/mac-bytes.js"></script>
 <script src="delv/mac-containers.js"></script>
 <script src="delv/mac-stuffit.js"></script>
@@ -248,11 +248,11 @@ const dec = new TextDecoder();
 let wasm, mem;
 let logCalls = 0;
 const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffer, p, n))); } };
-// The module's heap, said once whenever it changes. A phone has far less room
+// Each change in the size of the module's heap goes to the log. A phone has far less room
 // than a desktop and growing a WebAssembly memory on one is not free, so if a
 // long frame lines up with a jump here that is the thing to chase.
 let heapSeen = 0;
-// There was a `reserveHeap(64)` here, and it is worth saying why it is gone
+// There was a `reserveHeap(64)` here, and the reason it is gone is worth recording
 // rather than leaving the hole for someone to fill again. It was an
 // experiment: a load had grown the heap 36 MB inside a 34,642 ms frame on the
 // maintainer's phone, so the page grew the memory itself before play to find
@@ -262,7 +262,7 @@ let heapSeen = 0;
 //
 // So the experiment was answered twice over and the reservation was left
 // standing. It was never going to help in any case: `memory.grow` called from
-// here adds pages the module's own allocator knows nothing about, so it grows
+// here adds pages that the module's allocator does not account for, so it grows
 // again for itself. What it did do is cost 64 MB that nothing ever used --
 // measured in this browser, same source, same twenty seconds of play: 299 MB
 // with it and 235 MB without, at the same guest tick. On a phone, where the
@@ -311,21 +311,21 @@ const wasmReady = loadWasm().catch(e => { say('module failed to load: ' + e); st
 // the one the bundle derived from its URL, because that is what is already in
 // the browser of anyone who has played.
 const ARCHIVE_STORE = 'archive.org_cors_cythera-installers_Cythera_20installers.sit';
-// The game is not in this repository. A game.sit served beside the page wins
-// (a local checkout with a symlink to the installed-folder archive); otherwise
+// The game is not in this repository. The page tries a game.sit served beside it
+// first (a local checkout with a symlink to the installed-folder archive), then
 // archive.org, through the /cors/ path that sends the CORS header.
 //
 // **The order of these two matters and it is not about size.** The 28 MB
-// four-in-one bundle holds the 1.0.1, 1.0.2, 1.0.3 and 1.0.4 installers, and
-// the loader takes the first VISE payload it finds, which is 1.0.1 -- so the
+// four-in-one bundle has the 1.0.1, 1.0.2, 1.0.3 and 1.0.4 installers in it, and
+// the loader uses the first VISE payload it finds, which is 1.0.1 -- so the
 // page served Cythera 1.0.1 for as long as that was the only source, while
 // every measurement this project has taken is against 1.0.4. 1.0.1 is also a
 // version the Cythera Guides board names for the NPCs-following bug, and a
-// character created under an old version carries its quest faults forward.
-// Tucows' mirror is the 1.0.4 installer on its own, a quarter of the size,
-// and the Cythera Data it expands to is byte for byte the one the installed
-// folder holds. Its data forks are stored rather than compressed, which is
-// what lets the module's own StuffIt reader expand it; the standalone 1.0.1
+// character created under an old version brings its quest faults forward with it.
+// Tucows' mirror is the 1.0.4 installer alone, a quarter of the size,
+// and the Cythera Data it expands to is byte for byte the one in the installed
+// folder. Its data forks are stored rather than compressed, which is
+// what lets the module's StuffIt reader expand it; the standalone 1.0.1
 // and 1.0.2 archives are method 13 and would not work here.
 const GAME_SOURCES = [
   { url: 'game.sit' },
@@ -342,7 +342,7 @@ async function getGame() {
     if (!res.ok) {
       // `game.sit` beside the page is a symlink for the Node runners and is
       // not deployed, so on the live site it is always missing. That is the
-      // normal path to archive.org, not a fault, and it used to read as one.
+      // normal path to archive.org, not a fault, and the message makes that clear.
       if (res.status === 404 && !/^https?:/.test(url)) say(`no ${url} beside the page; going to archive.org`);
       else say(`${url}: ${res.status}`);
       continue;
@@ -364,8 +364,8 @@ document.getElementById('file').addEventListener('change', async e => {
 // stylesheet's braces. iOS reports `100vh` as the viewport with the browser's
 // toolbars retracted, taller than what is on the screen while they are up:
 // that is what put the bottom of the game under Chrome's toolbar. `100dvh` in
-// the stylesheet is the fix; this takes the smaller of that and innerHeight,
-// so a browser that gets either of them wrong still cannot leave part of the
+// the stylesheet is the fix; this uses the smaller of that and innerHeight,
+// so a browser with either of them wrong still cannot leave part of the
 // game off the screen. innerHeight does not move when the keyboard opens on
 // iOS -- the keyboard shrinks the visual viewport, not the layout one -- so
 // the game does not resize under the Type button.
@@ -382,9 +382,9 @@ function fitToViewport() {
   clampPads();
 }
 // The panels hang off the bottom of the bar, and the bar's height is the
-// stylesheet's business rather than a number they can be told: one row that
+// stylesheet's business rather than a number set from here: one row that
 // scrolls on a phone, two or more where it wraps. They read it as `--bar`,
-// for the same reason `chooseScreen` measures rather than guesses.
+// for the same reason `chooseScreen` measures rather than estimates.
 function noteBarHeight() {
   document.documentElement.style.setProperty('--bar',
     document.getElementById('bar').getBoundingClientRect().height + 'px');
@@ -394,12 +394,12 @@ function noteBarHeight() {
 // between the phone's width and the row's. Measured once at parse, above, and
 // again whenever the box itself moves -- which is what put the panels 37 px
 // below the bar on a wide window, where they were still placed for the two
-// rows the bar had while it said "loading module...".
+// rows the bar had during "loading module...".
 if (window.ResizeObserver) new ResizeObserver(noteBarHeight).observe(document.getElementById('bar'));
-// On a phone the bar is one row that scrolls sideways, and nothing about a
-// row cut off at the edge of the screen says that it goes on. An arrow over
-// either end says so while there is more that way, and a tap on it scrolls
-// the row most of a width. What the row holds changes width without the row
+// On a phone the bar is one row that scrolls sideways, and a row cut off at
+// the edge of the screen gives no sign that it goes on. An arrow sits over
+// each end while there is more that way, and a tap on it scrolls
+// the row most of a width. What is in the row changes width without the row
 // itself resizing -- Play goes, the status text comes and goes --
 // so each control is watched as well as the row.
 {
@@ -426,16 +426,16 @@ window.addEventListener('orientationchange', () => setTimeout(fitToViewport, 120
 
 const MAC_EPOCH_OFFSET = 2082844800;
 // Cythera's start screen is laid out for 640x480 and the game itself runs at
-// any larger size, its windows free to move. So: portrait keeps 640 wide and
-// fills the height, landscape keeps 480 high and fills the width, and the
+// any larger size, its windows free to move. So: portrait is 640 wide and
+// fills the height, landscape is 480 high and fills the width, and the
 // canvas then covers the stage at the device's aspect. ?w=&h= overrides.
-// The space is measured rather than guessed at: the page is a column of the
-// bar and the stage, so what the game gets is the page's height less the
-// bar's, less whatever padding the stage holds off its edges for the camera
+// The space is measured rather than estimated: the page is a column of the
+// bar and the stage, so the game's height is the page's height less the
+// bar's, less whatever padding the stage leaves at its edges for the camera
 // housing and the home indicator. Subtracting a nominal 40 px bar instead --
 // which this did -- was wrong by however much the bar's real height differed,
 // and on a phone the bar was 76. The log is NOT measured, because play hides
-// it: taking the stage's own box instead of this arithmetic looks tidier and
+// it: taking the stage's box instead of this arithmetic looks tidier and
 // is wrong, since at boot the log is still showing and the game is then laid
 // out for a stage 79 px shorter than the one it ends up in.
 function chooseScreen() {
@@ -455,11 +455,11 @@ let bootPromise = null;
 function boot() { return bootPromise || (bootPromise = bootOnce().catch(e => { bootPromise = null; throw e; })); }
 // What the desktop runner prints to stderr when the PowerPC slice reaches an
 // import nothing implements. There is no stderr here, and without this a halt
-// is a window that stops repainting with nothing said.
+// is a window that stops repainting with no message at all.
 function haltReason() {
   const len = wasm.cw_halt_reason_len();
   if (!len) return '';
-  const ptr = wasm.cw_halt_reason(); // takes a copy, so the buffer is read after
+  const ptr = wasm.cw_halt_reason(); // the module copies the reason out, so the buffer is read after
   return ': ' + dec.decode(new Uint8Array(mem.buffer, ptr, len));
 }
 async function bootOnce() {
@@ -476,10 +476,10 @@ async function bootOnce() {
   const t0 = performance.now();
   const [sw, sh] = chooseScreen();
   // Cythera ships both slices in one application. The page launches the
-  // PowerPC one, which the fork draws through Cythera's own window and control
+  // PowerPC one, which the fork draws through Cythera's window and control
   // definitions, as the desktop runner does since 3 October 2026; ?ppc=0
   // launches the 68K one, which the page ran until then. The choice is made
-  // inside cw_load, so it is said before it.
+  // inside cw_load, so the log line comes before it.
   if (POWERPC) { wasm.cw_prefer_powerpc(1); say('launching the PowerPC slice'); }
   qtBegin();
   const rc = wasm.cw_load(p, bytes.length, Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET, sw, sh);
@@ -510,7 +510,7 @@ function db() {
   return dbPromise || (dbPromise = new Promise((resolve, reject) => {
     // Version 2 added the music store and version 3 the patch store. The
     // upgrade creates whichever stores are missing, so a browser holding an
-    // older database keeps what is in it.
+    // older database loses nothing in it.
     const req = indexedDB.open(SAVE_DB, 3);
     req.onupgradeneeded = () => {
       const d = req.result;
@@ -555,9 +555,9 @@ function idb(mode, fn) {
 function listSaves() { return idb('readonly', st => st.index('game').getAll(gameId)); }
 function putSave(rec) { rec.key = gameId + '\u0000' + rec.path; rec.game = gameId; return idb('readwrite', st => st.put(rec)); }
 // A record is deleted by the key it was stored under, never one rebuilt from
-// gameId: until the game has been fetched gameId is null, an index asked for
-// null answers with every record of every game, and a key built from null
-// matches none of them, so Delete asked, deleted nothing and left the row.
+// gameId: until the game has been fetched gameId is null, a query of the index
+// for null returns every record of every game, and a key built from null
+// matches none of them, so Delete showed its question, deleted nothing and left the row.
 function deleteSave(rec) { return idb('readwrite', st => st.delete(rec.key)); }
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 
@@ -599,7 +599,7 @@ const saveTimer = setInterval(syncSaves, 2000);
 document.addEventListener('visibilitychange', () => { if (document.hidden) syncSaves(); });
 window.addEventListener('pagehide', syncSaves);
 
-// MacBinary II: one file carrying both forks and the Finder info, which is
+// MacBinary II: one file with both forks and the Finder info in it, which is
 // what a character file needs to survive a trip through mail or Files.
 function crc16(bytes) { let c = 0; for (const b of bytes) { c ^= b << 8; for (let i = 0; i < 8; i++) c = (c & 0x8000) ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; } return c; }
 // Not `fourcc`: grimoire's mac-bytes.js, loaded before this script, defines a
@@ -655,12 +655,12 @@ async function renderSaves() {
     if (b.dataset.act === 'export') {
       const blob = new Blob([toMacBinary(rec)], { type: 'application/x-macbinary' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = rec.path.split('/').pop() + '.bin'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    } else if (confirm(`Delete the stored copy of ${rec.path.split('/').pop()}? The running game keeps its own until the page reloads.`)) {
+    } else if (confirm(`Delete the stored copy of ${rec.path.split('/').pop()}? The running game still has its copy until the page reloads.`)) {
       await deleteSave(rec); renderSaves();
     }
   };
 }
-// --- cheats. Cythera's map window keeps the last four typed bytes; when they
+// --- cheats. The last four bytes typed in Cythera's map window are stored; when they
 // read ©gra and bit 0 of byte 3 of the four-byte 'Pref' 130 "UI Prefs"
 // record is set, cheat mode toggles. Nothing in the game sets that bit, so
 // the page sets it in the stored preference file (a resource fork) and
@@ -699,10 +699,10 @@ async function prefsRecord() {
 // tune's checksum, which on the desktop is a directory named by
 // SYSTEMLESS_TUNE_LIBRARY holding 1A2B3C4D.mid and 1A2B3C4D.wav. A browser
 // has no directory, so the page unpacks a zip and hands the module each file
-// by checksum, and keeps them so the next visit still has them.
+// by checksum, and stores them for the next visit.
 // The game's eleven tunes, in the order they sit in its data file
 // (resources 0x9000..0x900A), with the checksum each one's stream hashes to.
-// The fork keys substitutes by that checksum and knows nothing about Cythera;
+// The fork keys substitutes by that checksum and has nothing specific to Cythera;
 // this table is the Cythera-specific half, and it lives here for that reason.
 // Recomputed with the tune-library script in the disassembly toolkit if a
 // different build of the game ever turns up.
@@ -720,7 +720,7 @@ const GAME_TUNES = [
   { sum: 0x7C7452F8, name: 'Kosha' },
 ];
 // What the guides site publishes. Fetching any of them needs the site to
-// allow cross-origin reads; if it does not, the browser refuses and the file
+// allow cross-origin reads; if it does not, the browser blocks the fetch and the file
 // picker below is the way in. The MIDI set is the small one and the one this
 // host reads without converting anything.
 const MUSIC_SOURCES = [
@@ -743,13 +743,13 @@ function clearMusicStore() {
 }
 
 // A zip reader, and the one the page has: the Music panel's folder of tunes,
-// and a save or a patch sent to a phone, which arrives as a zip because the
-// Files app's Compress makes one and iOS cannot take a file out of it first.
+// and a save or a patch sent to a phone, which comes as a zip because the
+// Files app's Compress makes one and iOS has no way to unpack it first.
 // Find the end-of-central-directory record, walk the central directory, and
 // take each entry stored or deflated. DecompressionStream does the
 // inflating, so there is no library to load. Zip64 and encrypted entries are
-// not handled; an entry that cannot be read is named in `skipped` rather
-// than guessed at, and one that inflates to the wrong bytes fails its CRC.
+// not handled; an entry that cannot be read is named in `skipped`, never
+// filled in by assumption, and one that inflates to the wrong bytes fails its CRC.
 //
 // A zip has nowhere to put a resource fork or a Finder type, so a Mac writes
 // them as an AppleDouble file beside the real one: `._name` in the same
@@ -787,8 +787,8 @@ function appleDoubleParts(u8) {
 }
 // Returns { files: [{ path, name, data, rsrc, type, creator, flags, created,
 // modified }], skipped }
-// or null when the bytes are not a zip. `want(path)` chooses which files are
-// read at all; the Finder's own .DS_Store is never one of them. A file with
+// or null when the bytes are not a zip. The `want(path)` callback chooses which files are
+// read at all; the Finder's .DS_Store is never one of them. A file with
 // no AppleDouble has type and creator 0 and an empty resource fork.
 async function readZip(buf, want = () => true) {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -803,7 +803,7 @@ async function readZip(buf, want = () => true) {
     if (dv.getUint32(p, true) !== 0x02014b50) break;
     const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true);
     const raw = buf.subarray(p + 46, p + 46 + nameLen);
-    // The Finder writes UTF-8 names without setting the flag that says so,
+    // The Finder writes UTF-8 names without setting the flag that marks them,
     // and a zip made on a classic Mac has Mac Roman ones.
     let path;
     try { path = new TextDecoder('utf-8', { fatal: true }).decode(raw); }
@@ -815,7 +815,7 @@ async function readZip(buf, want = () => true) {
   }
   async function read(e) {
     if (e.flags & 1) throw new Error('encrypted');
-    if (e.local + 30 > buf.length || dv.getUint32(e.local, true) !== 0x04034b50) throw new Error('no local header where the directory says');
+    if (e.local + 30 > buf.length || dv.getUint32(e.local, true) !== 0x04034b50) throw new Error('no local header at the offset in the directory');
     const start = e.local + 30 + dv.getUint16(e.local + 26, true) + dv.getUint16(e.local + 28, true);
     const raw = buf.subarray(start, start + e.csize);
     let bytes = null;
@@ -861,7 +861,7 @@ function naturalOrder(a, b) {
 }
 
 // Anything the browser can decode becomes what the host can play: 8-bit PCM,
-// which is what the Sound Manager channels take and what the game's own audio
+// which is the Sound Manager channels' format and what the game's audio
 // already is, so nothing is lost by going down to it. This is what makes the
 // site's m4a and flac usable at all -- the host reads uncompressed PCM and
 // Standard MIDI, and neither of those is either.
@@ -912,9 +912,9 @@ async function installMusicFile(checksum, label, bytes, store) {
 }
 
 // Files named for their tune are taken at their word. Anything else is put in
-// order -- the way the tracks are numbered, which is the order the game keeps
-// its tunes in -- and the first eleven become the eleven tunes. The log says
-// what went where, because the guess is only as good as the naming.
+// order -- the way the tracks are numbered, which is the order of the game's
+// tunes too -- and the first eleven become the eleven tunes. The log lists
+// what went where, because matching by order is only as good as the naming.
 async function installMusicFiles(files) {
   const named = [], rest = [];
   for (const f of files) (MUSIC_NAME.test(f.name) ? named : rest).push(f);
@@ -974,22 +974,22 @@ async function restoreMusic() {
   return recs.length;
 }
 
-// --- the game's own music on QuickTime's instruments
+// --- the game's music on QuickTime's instruments
 //
-// qt-music.js says what this is and why it needs no change to the fork. The
-// page's part is the order of things. The instruments are asked for as the
+// What this is, and why it needs no change to the fork, is in qt-music.js. The
+// page's part is the order of things. The page requests the instruments as the
 // boot begins, from the two megabytes kept from an earlier visit or, the
 // first time, from archive.org, which is slow and is never waited for. The
 // tunes are read out of Cythera Data once the patches are merged, so a patch
-// that replaces a tune is what gets rendered, and each is rendered in a
+// that replaces a tune is what the worker renders, and each is rendered in a
 // worker and installed as the recording for its checksum, the theme first. A
 // boot with the instruments already here waits a few seconds for the theme,
-// since the title screen starts it at once and a tune that has started keeps
-// its instruments until it next starts; nothing else waits.
+// since the title screen starts it at once and a tune that has started plays
+// on the same instruments until it next starts; nothing else waits.
 //
-// A file the visitor gave for a tune always wins: the render for that tune is
-// not installed, whichever of the two arrives first. Nothing rendered is
-// kept. Eleven tunes are 52 MB as the module holds them, a desktop renders
+// A file the visitor gave for a tune always comes before a render: the render
+// for that tune is not installed, even when it finishes first. Nothing
+// rendered is stored. Eleven tunes are 52 MB in the module's memory, a desktop renders
 // them in nine seconds, and keeping them would be a second copy of that in
 // the browser's store to save those seconds.
 const QT_INSTALLER_URL = 'https://archive.org/cors/apple-quicktime-3/apple-quicktime-3.iso/QUICKTIM.EXE';
@@ -1044,8 +1044,8 @@ function qtBegin(file) {
   if (!qtWanted()) return;
   qtStop();
   const w = qt.worker = new Worker('qt-music.js' + (BUILD.startsWith('__') ? '' : '?v=' + BUILD));
-  // Whether the instruments are already here is known in a moment, and is
-  // what the boot asks before deciding to wait for the theme.
+  // Whether the instruments are already here is known in a moment, and the
+  // boot checks it before it waits for the theme.
   let kept = null;
   qt.remembered = file ? Promise.resolve(false)
     : qtCache('readonly', s => s.get(QT_KEY)).then(b => { kept = b || null; return !!kept; }, () => false);
@@ -1064,7 +1064,7 @@ function qtBegin(file) {
     if (keep) qtCache('readwrite', s => s.put(got.fork, QT_KEY)).catch(e => say('music: could not keep the instruments: ' + e));
     return w;
   })();
-  // Reported where it is awaited; this keeps a boot that never gets that far quiet.
+  // Reported where it is awaited; this silences it for a boot that never reaches that point.
   qt.ready.catch(() => {});
 }
 // The tunes as the game will queue them: every resource of the music's
@@ -1098,7 +1098,7 @@ async function qtRenderGameTunes(waitMs) {
     try { w = await ready; } catch (e) {
       first();
       if (qt.ready === ready) { qtStop(); qtNote('the instruments could not be fetched'); }
-      say(`music: could not get QuickTime 3's instruments (${e.message}); the built-in instruments play. Music has a file picker that takes QUICKTIM.EXE.`);
+      say(`music: could not get QuickTime 3's instruments (${e.message}); the built-in instruments play. Music has a file picker for QUICKTIM.EXE.`);
       return;
     }
     const t0 = performance.now();
@@ -1121,7 +1121,7 @@ async function qtRenderGameTunes(waitMs) {
   })();
   if (waitMs && await qt.remembered) await Promise.race([firstDone, new Promise(r => setTimeout(r, waitMs))]);
 }
-// The visitor's files are all that is installed again; then the game's own.
+// The visitor's files are all that is installed again; then the game's tunes.
 async function qtRestart(file) {
   qtStop();
   qt.installed.clear();
@@ -1177,10 +1177,10 @@ function unwrapPatch(fileName, u8) {
     if (looksLikeStuffIt(bytes)) {
       // The vendored reader decompresses StuffIt's methods 13 and 15 since
       // 15 and 16 September 2026, and the one published patch is a method-13
-      // fork. Before that this branch refused the download and said to extract
-      // it first, which on a phone is not something that can be done at all.
-      // A .sit holds several files, so the first entry whose data fork reads
-      // as a Delver Archive wins, and one that will not come out is stepped
+      // fork. Before that this branch rejected the download with a message to
+      // extract it first, which on a phone is not something that can be done at all.
+      // A .sit has several files in it, so the page uses the first entry whose
+      // data fork reads as a Delver Archive, and one that will not come out is stepped
       // over rather than thrown on -- a file beside it may still be the patch.
       let arc;
       try { arc = parseStuffItArchive(bytes); }
@@ -1196,7 +1196,7 @@ function unwrapPatch(fileName, u8) {
       }
       if (!found)
         throw new Error('Nothing in ' + name + ' is a Delver Archive, so there is no patch in it.' +
-                        (passed.length ? ' It holds ' + passed.join(', ') + '.' : '') +
+                        (passed.length ? ' The files in it are ' + passed.join(', ') + '.' : '') +
                         (refused.length ? ' It could not decompress ' + refused.join(', ') + '.' : ''));
       name = found.name; bytes = found.bytes; continue;
     }
@@ -1227,7 +1227,7 @@ async function unwrapPatchFile(fileName, u8) {
     } catch (err) { passed.push('"' + e.path + '" (' + err.message + ')'); }
   }
   throw new Error('Nothing in ' + fileName + ' is a Delver Archive, so there is no patch in it.' +
-                  (passed.length ? ' It holds ' + passed.join(', ') + '.' : ''));
+                  (passed.length ? ' The files in it are ' + passed.join(', ') + '.' : ''));
 }
 
 // Apply every stored patch to the archive on the disk. Called between cw_load
@@ -1248,7 +1248,7 @@ async function applyPatches() {
       bytes = m.bytes; applied++;
       say(`patch ${r.name}: ${m.replaced.length} resource(s) replaced` +
           (m.added.length ? `, ${m.added.length} added` : '') +
-          (m.disagreed.length ? `, ${m.disagreed.length} refused` : ''));
+          (m.disagreed.length ? `, ${m.disagreed.length} not applied` : ''));
     } catch (e) {
       say(`patch ${r.name} was not applied: ${e.message}`);
     }
@@ -1295,7 +1295,7 @@ document.getElementById('patchfile').onchange = async e => {
     const raw = new Uint8Array(await file.arrayBuffer());
     const unwrapped = await unwrapPatchFile(file.name, raw);
     // Merge once now, against the archive as loaded, so a file that cannot
-    // work says so here rather than silently at the next load.
+    // work shows an error here rather than failing silently at the next load.
     const path = findPath('Cythera Data');
     if (!path) throw new Error('Cythera Data is not on the disk');
     const base = stageFile(path);
@@ -1317,7 +1317,7 @@ async function renderMusic() {
   let recs = [];
   try { recs = await listMusic(); } catch (e) {}
   const by = new Map(recs.map(r => [r.checksum >>> 0, r]));
-  note.textContent = recs.length ? `${recs.length} of ${GAME_TUNES.length} tunes replaced` : 'the game plays its own music';
+  note.textContent = recs.length ? `${recs.length} of ${GAME_TUNES.length} tunes replaced` : 'the game\'s music plays';
   document.getElementById('qtmusic').checked = qtWanted();
   qtNote(qt.note);
   const kindName = k => k === 2 ? 'recording' : k === 1 ? 'MIDI' : '';
@@ -1355,7 +1355,7 @@ document.getElementById('musicload').onclick = () => fetchMusic(document.getElem
   const sel = document.getElementById('musicsource'), dl = document.getElementById('musicdownload');
   sel.innerHTML = '<option value="">Choose a published set…</option>' +
     MUSIC_SOURCES.map(s => `<option value="${s.url}">${s.label}</option>`).join('');
-  // Fetching these is refused by the site that publishes them, so the link is
+  // The site that publishes these blocks fetches from other sites, so the link is
   // the route that works: download it, then choose the file.
   const syncLink = () => {
     dl.href = sel.value || '#';
@@ -1401,7 +1401,7 @@ document.getElementById('cheatenable').onclick = async () => {
   rec.rsrc = rec.rsrc.slice(); rec.rsrc[ui.offset + 3] |= 1; rec.savedAt = Date.now();
   await putSave(rec);
   say('cheats: cheat bit set in the stored preferences; reloading so the game reads it at launch');
-  // The running game would write its own copy back over ours within two
+  // The running game would write its copy back over ours within two
   // seconds, so leave before the next scan.
   clearInterval(saveTimer);
   location.reload();
@@ -1423,14 +1423,14 @@ document.getElementById('cheatcode').onclick = () => {
   setTimeout(() => plainChar(0x0F, 0x72), 240);
   setTimeout(() => plainChar(0x00, 0x61), 360);
   setTimeout(() => plainChar(0x2E, 0x6D), 600);
-  say('cheats: typed ©gra (and M to clear the armed mode); the message window says whether cheat mode toggled');
+  say('cheats: typed ©gra (and M to clear the armed mode); whether cheat mode toggled shows in the message window');
   cheatPanel.hidden = true;
 };
 const CHEAT_KEYS = [
-  ['Jump', 'option-j: asks Level, X, Y in hex, then teleports', 0x26, 0xC6, false],
-  ['Take teleporter', 'option-shift-j: asks a teleporter number, decimal', 0x26, 0xEF, true],
-  ['Create object', 'option-s: asks prop number (hex), Data1 (decimal), Data2 (hex); lands in the inventory', 0x01, 0xA7, false],
-  ['What prop', 'option-p: asks a prop index and prints its record', 0x23, 0xB9, false],
+  ['Jump', 'option-j: type Level, X and Y in hex at the prompt to teleport', 0x26, 0xC6, false],
+  ['Take teleporter', 'option-shift-j: type a teleporter number at the prompt, in decimal', 0x26, 0xEF, true],
+  ['Create object', 'option-s: type prop number (hex), Data1 (decimal) and Data2 (hex); the thing appears in the inventory', 0x01, 0xA7, false],
+  ['What prop', 'option-p: type a prop index, and the game prints that record', 0x23, 0xB9, false],
   ['Position', 'option-shift-/: prints the player\'s x, y', 0x2C, 0xC0, true],
   ['Clock', 'option-shift-t: prints the time and day', 0x11, 0xFF, true],
   ['Pass 15 minutes', 'option-t', 0x11, 0xA0, false],
@@ -1488,9 +1488,9 @@ document.getElementById('savesclose').onclick = () => panel.hidden = true;
 document.getElementById('showall').onchange = renderSaves;
 document.getElementById('importbtn').onclick = () => document.getElementById('importfile').click();
 // A character comes in as the .bin the Export button makes, or as a zip: a
-// save sent to a phone arrives as one, and so does the community's Rocky the
+// save sent to a phone is always one, and so is the community's Rocky the
 // Flying Chicken, two characters in a folder. Out of a zip every one of the
-// game's own files is taken, whether it came with its AppleDouble or as a
+// game's files is imported, whether it came with its AppleDouble or as a
 // .bin; anything else in it is named and left.
 const GAME_CREATOR = 0x44656C76; // 'Delv'
 async function savesFromFile(f) {
@@ -1533,7 +1533,7 @@ document.getElementById('importfile').addEventListener('change', async e => {
    for the art Ambrosia dithered down to 256 colours. Off unless the Undither
    button is on; the choice is remembered in this browser.
 
-   grimoire's own implementation is written for one still picture and costs
+   grimoire's implementation is written for one still picture and costs
    5.8 seconds for a 640x480 frame, so this is the GPU version the retired
    mobile shell carried (alchemy's mobile/mobile.html, checked against grimoire
    by its mobile_undither_check.mjs): the same settings and the same detector,
@@ -1554,13 +1554,13 @@ document.getElementById('importfile').addEventListener('change', async e => {
 
    One thing is added. grimoire leaves the colours the game animates (palette
    indices 0xE0 to 0xFB, `isAnimatedIndex`) untouched; the mobile shell only
-   had RGB and could not. This page asks the module for each pixel's index
+   had RGB and could not. This page reads each pixel's index from the module
    (`cw_render_indices`) and gives those pixels no blend, as grimoire does.
 
-   The filter draws into a WebGL canvas of its own that is never shown; the
+   The filter draws into a separate WebGL canvas that is never shown; the
    result is copied onto the page's 2D canvas, so the canvas the page lays out
-   and takes input on is the same one either way. Without WebGL the button
-   says so in the log and the screen is shown as the game draws it: a display
+   and reads input from is the same one either way. Without WebGL a line in the
+   log reports it and the screen is shown as the game draws it: a display
    filter must not be able to stop the game. */
 const UNDITHER = { sens: 0.67, strength: 0.67, detail: 0.5, edge: 64, light: true };
 let unditherGL = null, unditherOn = false;
@@ -1587,9 +1587,9 @@ function makeUndither() {
       }
       gl_FragColor = vec4(sum / cnt, 1.0);
     }`;
-  /* A dither alternates against its neighbours along a line through it; a
-     drawn edge agrees with them. The residual is a pixel less its own
-     neighbourhood's mean, and the detector compares residuals along both
+  /* A dither alternates against its neighbours along a line through it; the
+     pixels along a drawn edge match theirs. The residual is a pixel less the mean of its
+     neighbourhood, and the detector compares residuals along both
      axes, three pixels each way (grimoire's LINE_REACH). */
   /* Blending in light rather than in stored values. A fine dither of light
      and dark pixels looks as bright as the average of their LIGHT, and the
@@ -1597,8 +1597,8 @@ function makeUndither() {
      which is what grimoire does -- makes a dithered area darker than it looked
      undithered: on the conversation window's blue background by 40%, over a
      whole conversation frame by 5% (26 September). So the detector still
-     works on stored values, where grimoire's thresholds were tuned, and says
-     where to blend and how much; the blends and averages are done in light
+     works on stored values, where grimoire's thresholds were tuned, and its
+     output is where to blend and how much; the blends and averages are done in light
      (the sRGB transfer curve, IEC 61966-2-1), and the last pass encodes the
      result back. u_light 0 is grimoire's arithmetic, which the probe checks
      against grimoire itself. */
@@ -1640,7 +1640,7 @@ function makeUndither() {
         float coh = best < -1.0 ? 1.0 : best;
         d = clamp((u_sens - coh) * 8.0, 0.0, 1.0) * smoothstep(1.5, 5.0, m);
       }
-      // A pixel whose whole neighbourhood is its own colour has nothing to undither.
+      // A pixel whose whole neighbourhood is the same colour as it has nothing to undither.
       bool uniformArea = true;
       for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
         if (dx == 0 && dy == 0) continue;
@@ -1783,7 +1783,7 @@ function makeUndither() {
       w = nw; h = nh; glCanvas.width = w; glCanvas.height = h;
       allocate();
       // Some drivers advertise half floats and will not render to them;
-      // asking is the only way to find out.
+      // the only way to find out is to render to one and check.
       if (fboType !== gl.UNSIGNED_BYTE && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
         fboType = gl.UNSIGNED_BYTE;
         gl.deleteTexture(texMean); gl.deleteTexture(texRes); gl.deleteTexture(texDet);
@@ -1810,7 +1810,7 @@ function makeUndither() {
     return {
       canvas: glCanvas,
       light: UNDITHER.light,
-      // The indices are taken first: asking the module for them can grow its
+      // The indices are taken first: reading them from the module can grow its
       // memory, which would leave a view already taken on the frame empty.
       indices(idx, nw, nh) {
         if (nw !== w || nh !== h) resize(nw, nh);
@@ -1909,7 +1909,7 @@ const VBL_HZ = 60.15, RATE = 22050, MAX_STEPS = 2_000_000;
 // manages, 2M instructions is 100 ms; 150k is under 10 ms. This mattered
 // only once the guest had real work to do in a frame: before the runner
 // stopped idling WaitNextEvent sleeps past ready threads, a paced slice
-// returned almost immediately whatever it was asked for.
+// returned almost immediately whatever length it was given.
 const SLICE = 150_000;
 let audioCtx = null, nextAudioTime = 0, silentMedia = null;
 // The guest's sound is 8-bit at 22,050 Hz, and it used to reach the speaker as
@@ -1963,14 +1963,14 @@ class GuestAudio extends AudioWorkletProcessor {
     const out = outputs[0][0], cap = this.buf.length;
     for (let i = 0; i < out.length; i++) {
       if (this.read + 1 >= this.written) {
-        // Nothing left. Carry the wave on at the speed it was going, and take
+        // Nothing left. Continue the wave at the speed it was going, and take
         // that speed away over about five samples before letting the level
         // itself fade: dropping to zero is a click and holding the last value
         // is a corner, and this is neither. The speed has to go quickly --
         // a wave carried on in a straight line for long would swing past full
         // scale -- and the level is clamped in case it tries. The read
         // position stays where it is, so the stream picks up where it left
-        // off when samples arrive.
+        // off when samples come in again.
         this.vel *= 0.8;
         this.last = Math.max(-1, Math.min(1, (this.last + this.vel) * 0.999));
         // Only count a gap once there has been something to play: this node is
@@ -1991,7 +1991,7 @@ class GuestAudio extends AudioWorkletProcessor {
       if (this.wasDry) { this.hold = this.last; this.holdVel = this.vel; this.mix = 0; this.wasDry = false; }
       let outv = v;
       if (this.mix < 1) {
-        // Cross-fade from what was being heard to what is arriving. The thing
+        // Cross-fade from what was being heard to what is coming in. The thing
         // being faded out has to carry on moving the way the wave was moving,
         // by the same rule the gap itself uses: holding it still is a corner,
         // and a corner is what is heard. A raised cosine because a straight
@@ -2011,19 +2011,19 @@ class GuestAudio extends AudioWorkletProcessor {
 }
 registerProcessor('guest-audio', GuestAudio);
 `;
-// How much sound is kept ahead of the speaker. The frame loop asks the guest
-// for whatever brings the ring back up to this, so the audio device's clock
-// sets the pace rather than the wall clock, which is what the game's own
+// How much sound is kept ahead of the speaker. Each frame, the loop runs the
+// guest long enough to bring the ring back up to this, so the audio device's clock
+// sets the pace rather than the wall clock, which is what the game's
 // sound channels expect.
 const AUDIO_TARGET = Math.round(RATE * 0.18), AUDIO_CAPACITY = Math.round(RATE * 0.5);
 let audioNode = null, audioMode = 'pending', audioQueued = 0, audioConsumed = 0, audioStarved = 0;
 let audioConsumedAt = 0, audioStarvedSeen = 0;
-// How much sound the ring still holds. The worklet says where it has read to
+// How much sound is still in the ring. The worklet posts the position it has read to
 // every eight callbacks, and that message waits behind whatever the main
 // thread is doing -- which, in the middle of the emulator, is tens of
 // milliseconds. Taking the message at face value made the ring look fuller
-// than it was exactly when the page was busiest, so the frame loop asked for
-// less sound exactly when it should have asked for more. The last position is
+// than it was exactly when the page was busiest, so the frame loop produced
+// less sound exactly when it should have produced more. The last position is
 // carried forward at the rate the node reads instead, which needs no message
 // to be on time. While the ring is empty the node reads nothing, so this
 // over-counts what has gone, which errs towards making more sound.
@@ -2052,7 +2052,7 @@ function unlockAudio() {
     document.body.appendChild(silentMedia);
     silentMedia.play()
       .then(() => say('audio: media session held open'))
-      .catch(e => say('audio: media session refused (' + e.name + '), the Ring/Silent switch will mute the game'));
+      .catch(e => say('audio: no media session (' + e.name + '), so the Ring/Silent switch will mute the game'));
   }
   if (!audioCtx) {
     try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { say('no audio: ' + e.message); return; }
@@ -2062,10 +2062,10 @@ function unlockAudio() {
   }
   if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
 }
-// The log is the only way anything about a run on a phone gets back here, so
+// The log is the only record of a run on a phone that reaches this machine, so
 // it has to be possible to take it away. The clipboard needs a gesture, which
-// a press is; where it is refused the text is selected instead, which leaves
-// the phone's own Copy one tap away.
+// a press is; where the browser blocks the copy the text is selected instead,
+// which leaves the phone's Copy one tap away.
 {
   const btn = document.getElementById('logcopy');
   btn.addEventListener('click', async () => {
@@ -2084,7 +2084,7 @@ function unlockAudio() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && audioCtx) audioCtx.resume().catch(() => {}); });
 // Made in the tap with the context, because a page that waits until the first
-// frame to ask for a worklet has left the gesture iOS grants audio in.
+// frame to request a worklet has left the gesture iOS grants audio in.
 function startWorklet() {
   if (new URLSearchParams(location.search).get('audio') === 'legacy') {
     audioMode = 'legacy'; say('audio: the old buffer-a-frame path, by ?audio=legacy'); return;
@@ -2108,22 +2108,22 @@ function startWorklet() {
     audioMode = 'legacy'; say('audio: the worklet would not load (' + (e.message || e) + '); the old buffer-a-frame path');
   }).finally(() => URL.revokeObjectURL(url));
 }
-// Everything the ring holds is dropped: the guest is about to jump forward and
+// Everything in the ring is dropped: the guest is about to jump forward and
 // what is queued belongs to a moment that will not be played.
 function resetAudio() {
   wasm.cw_audio_drain(); nextAudioTime = 0;
   if (audioNode) { audioNode.port.postMessage('reset'); audioQueued = 0; audioConsumed = 0; audioConsumedAt = audioCtx.currentTime; }
 }
 // The frames the page spends off the wall clock -- a black screen while a room
-// or a save loads, and the catch-up that follows -- used to throw their sound
-// away, which is why the music stopped between screens. The guest mixes in
-// proportion to its own clock, about 8,800 samples for every 24 ticks it
+// or a save loads, and the catch-up that follows -- threw their sound
+// away until 2 October 2026, which is why the music stopped between screens. The guest mixes in
+// proportion to its clock, about 8,800 samples for every 24 ticks it
 // advances, so those frames have real music in them; it is only that there
 // be more or less of it than the time it took to make, depending on the
 // device. So it is carried instead, newest ring-full first: a guest ahead of
 // real time overflows the ring, which cross-fades where it drops the oldest,
-// and a guest behind it runs the ring down, which the worklet's own fade
-// covers. The old path cannot hold a backlog, so it still drops.
+// and a guest behind it runs the ring down, which the worklet's fade
+// covers. The old path has no room for a backlog, so it still drops.
 function carryAudio() {
   if (audioNode) pushAudio(); else resetAudio();
 }
@@ -2145,7 +2145,7 @@ canvas.addEventListener('pointerdown', unlockAudio);
 let audioPushed = 0, audioLoud = 0;
 function pushAudio() {
   // Drain first: cw_audio_len is the length of what the last drain took, so
-  // asking it before draining reads the previous frame's count — and on the
+  // reading it before draining gives the previous frame's count — and on the
   // first frame that is zero, which made this return before ever draining.
   // The runner's buffer then only grew, and the page pushed nothing, ever.
   const ptr = wasm.cw_audio_drain(), n = wasm.cw_audio_len(); if (!n || !audioCtx) return;
@@ -2173,7 +2173,7 @@ function pushAudio() {
 }
 const isTouch = matchMedia('(pointer: coarse)').matches;
 if (isTouch) document.body.classList.add('touch');
-// The game's own start-up is ~85M instructions, sixteen seconds of Mac time
+// The game's start-up is ~85M instructions, sixteen seconds of Mac time
 // that nothing waits on the player for. Run that stretch unpaced and start
 // the clock just before the start screen fades in and its music queues.
 const FAST_FORWARD = Number(new URLSearchParams(location.search).get('ff') ?? 80_000_000);
@@ -2195,8 +2195,8 @@ function fastForward() {
 // it the button was Restart, a reload in two taps, and it read as Stop,
 // because the reload lands back on Play; it was renamed Refresh and then, on
 // 19 September 2026, taken out at the maintainer's word. Everything that
-// needs a reload asks for one itself -- adding or removing a patch, turning
-// cheats on -- and the browser's own reload is always there, since the page
+// needs a reload prompts for one itself -- adding or removing a patch, turning
+// cheats on -- and the browser's reload is always there, since the page
 // is never an installed app. A version that went straight back into the
 // game after a reload, with the sound unlocked by the first tap on it, was
 // built and set aside too; PLAYER-NOTES.md has what it took.
@@ -2238,19 +2238,19 @@ function play() {
   let frameTick0 = 0, frameHeap0 = 0, frameLogs0 = 0;
   // How many instructions to hand the guest in one uninterruptible go while
   // the page is off the wall clock. The loop that calls it checks the clock
-  // between calls, which bounds nothing if a single call takes seconds: the
+  // between calls, which bounds nothing when one call alone runs for seconds: the
   // maintainer's phone spent 37,957 ms on seven of them. So a call that runs
   // long shrinks the next one, and quick calls let it grow back. If the cost
-  // turns out to be proportional to the instructions, this alone keeps the
-  // page answering; if one operation inside the slice is what costs, the
+  // turns out to be proportional to the instructions, this alone is enough
+  // for the page to respond; if one operation inside the slice is what costs, the
   // shrinking will stop helping and say so by not helping.
   // The freeze is one call. Of the sixteen the frame made, fifteen took 37 ms
   // between them and one took 34,503 -- for the same 150,000 instructions. So
   // shrinking after the fact is no use: the first call is the whole thing.
   //
   // This starts small instead and grows while calls are quick, so the
-  // expensive region is met in a small slice and the log says how the cost is
-  // spread. If one small slice still takes tens of seconds, a single
+  // expensive region is met in a small slice, and the spread of the cost is in
+  // the log. A small slice that still lasts tens of seconds means a single
   // instruction or the trap under it is responsible and the tick names where.
   // If thirty small slices each take a second, it is spread over the region
   // and a different thing to chase. Either way the page stops being held for
@@ -2289,8 +2289,8 @@ function play() {
     const deadline = startTick + Math.floor((now - t0) / 1000 * VBL_HZ);
     // A guest that has run ahead of the wall clock is left alone until the
     // clock catches up: that is what pacing is. Re-basing the clock on it
-    // instead -- which this did briefly -- lets the guest's own idle
-    // fast-forwards carry the deadline along with them, and the game then
+    // instead -- which this did briefly -- moves the deadline forward with
+    // every one of the guest's idle fast-forwards, and the game then
     // keeps time sixteen times too fast, which is a day of hunger every
     // hour and a half.
     // Loading a save is about 60M instructions during which the game draws
@@ -2334,7 +2334,7 @@ function play() {
     // TickCount spins, and runs the interrupt tasks for every tick skipped,
     // so one uncapped 2M-instruction call in a load skipped minutes of
     // guest clock and blocked the page for ten seconds. Each call is now
-    // capped at 120 ticks of guest clock, two seconds, which keeps it to a
+    // capped at 120 ticks of guest clock, two seconds, so that it costs a
     // few tens of milliseconds whatever the guest is doing.
     if (wasm.cw_tick() < deadline - 20) {
       const g0 = performance.now();
@@ -2345,14 +2345,14 @@ function play() {
       const d0 = performance.now(); if (catchingUp % 3 === 1) present(); const dMs = performance.now() - d0;
       noteSlowFrame(now, 'catching up', gMs, dMs, s);
       if (now - winT > 1000) { statEl.textContent = `${W}x${H}, ${(insWindow / ((now - winT) / 1000) / 1e6).toFixed(1)} M/s, catching up`; insWindow = 0; winT = now; }
-      // The sound made while behind is the music the game is playing; carry it.
+      // The sound made while behind is the music the game is playing; put it in the ring.
       carryAudio();
       requestAnimationFrame(frame);
       return;
     }
     if (catchingUp) { say(`play: caught up after ${catchingUp} frames`); catchingUp = 0; }
     const dt = Math.min(now - lastT, 100); lastT = now;
-    // On the worklet path the speaker sets the pace: ask for whatever brings
+    // On the worklet path the speaker sets the pace: run the guest for whatever brings
     // the ring back to AUDIO_TARGET, capped at a tenth of a second so one
     // long frame cannot make the guest synthesise a second of music at once.
     // The old path has no ring, so it still goes by the wall clock.
@@ -2426,7 +2426,7 @@ function mouseUpAt(v, h) {
 /* Two fingers zoom and pan the screen; one finger is the game's mouse, as it
    always was. The zoom is a transform on the canvas, clamped so the picture
    never pulls away from the stage's edges, and guestPoint needs no change:
-   getBoundingClientRect already carries the transform, so a finger still lands
+   the transform is already in getBoundingClientRect's result, so a finger still lands
    on the guest pixel under it. It goes back to fitting the stage when pinched
    out, and whenever the stage changes size.
 
@@ -2434,8 +2434,8 @@ function mouseUpAt(v, h) {
    first finger of a pinch would then be a click wherever it touched -- a walk,
    a pick-up. So a finger waits PINCH_WAIT_MS for a second one before it
    presses, and presses at once if it moves or lifts first: a tap is still a
-   click and a hold still a hold. A second finger that arrives after the press
-   has to let the button go where it was, which the game takes as a click; the
+   click and a hold still a hold. A second finger that comes down after the press
+   has to let the button go where it was, which the game reads as a click; the
    wait makes that the rare case. A mouse or a pen presses at once, as before.
    The old mobile shell (alchemy's mobile/mobile.html) did the zoom arithmetic
    the same way. */
@@ -2444,7 +2444,7 @@ const fingers = new Map();       // touch pointers down on the canvas
 let pinch = null, pressId = null, pendingPress = null, spentFinger = null;
 const zoom = { s: 1, x: 0, y: 0 };
 function stageBox() {
-  // The canvas's own box before the transform: its layout position in the
+  // The canvas's box before the transform: its layout position in the
   // stage, measured from the stage's rectangle, which is not transformed.
   const st = canvas.parentElement.getBoundingClientRect();
   return { left: st.left + canvas.offsetLeft, top: st.top + canvas.offsetTop, w: canvas.offsetWidth, h: canvas.offsetHeight };
@@ -2463,7 +2463,7 @@ function applyZoom() {
   }
   canvas.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
 }
-// Only a stage that has changed size resets it: the page holds the stage still
+// Only a stage that has changed size resets it: the stage does not move
 // while the phone's keyboard is up, and typing should not lose the view.
 let zoomStage = '';
 function resetZoomIfResized() {
@@ -2567,7 +2567,7 @@ window.addEventListener('blur', releaseAll);
 // The command letters arm a mode the next direction directs (the manual,
 // p.6: G+arrow gets, L+arrow looks, A attacks, T talks, U uses; M cancels).
 // The mode clears itself after the command runs, so this only echoes what
-// was pressed; the game's own MOVE/TAKE/... tab is the readout.
+// was pressed; the game's MOVE/TAKE/... tab is the readout.
 const ARMS = { KeyG: 'Get: choose a direction', KeyT: 'Talk: choose a direction', KeyL: 'Look: choose a direction', KeyU: 'Use: choose a direction', KeyA: 'Attack: choose a direction', KeyM: 'Move' };
 const armedEl = document.getElementById('armed');
 let armedTimer = null;
@@ -2587,13 +2587,13 @@ for (const el of document.querySelectorAll('#hud .k[data-key]')) {
   el.addEventListener('pointercancel', up);
   el.addEventListener('lostpointercapture', up);
 }
-// Pads move by their title, and remember where they were put. A pad is
-// dragged by its own title, so a pad that has left the window cannot be
+// Pads move by their title, and the page stores where they were put. A pad is
+// dragged only by its title, so a pad that has left the window cannot be
 // reached to bring back -- and a place that was on the screen in portrait is
 // off it in landscape, which the phone can do by being turned. So a position
 // that came out of storage or out of a drag is held inside the window, and
 // held again whenever the window changes. A pad still sitting where the
-// stylesheet put it is left alone, so that it keeps the stylesheet's rule,
+// stylesheet put it is left alone, so that the stylesheet's rule still applies,
 // the safe-area inset among it. These are declarations rather than closures
 // because `fitToViewport` calls the first of them while the page is still
 // being parsed.
@@ -2627,7 +2627,7 @@ for (const pad of document.querySelectorAll('.pad')) {
 
 // Typing: a hidden input raises the phone's keyboard; each character it
 // receives goes to the game as a key down and up, Backspace and Return by
-// their own keys. Cythera needs text for a character's name and for what is
+// their keys. Cythera needs text for a character's name and for what is
 // said in conversation, so this is not optional.
 const kb = document.getElementById('kb');
 const CHAR_KEY = {};
