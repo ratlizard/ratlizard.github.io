@@ -9,17 +9,25 @@
 // like a pass.
 //
 // Usage: node music_smoke.mjs <archive> <FB7C80EC.mid>
+// The MIDI must be the theme's, FB7C80EC: the audio compared is the first
+// twenty seconds of the title screen, and no other tune plays there, so any
+// other file installs and changes nothing that is heard (19 October 2026,
+// when 9F5C06AC.mid was given and the run read as a fault in the player).
 import { readFileSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
 
 const [, , archivePath, midiPath] = process.argv;
 if (!archivePath || !midiPath) {
-  console.error('usage: node music_smoke.mjs <archive> <XXXXXXXX.mid>');
+  console.error('usage: node music_smoke.mjs <archive> <FB7C80EC.mid>');
   process.exit(2);
 }
 const midi = new Uint8Array(readFileSync(midiPath));
 const checksumName = midiPath.split('/').pop();
 const checksum = parseInt(checksumName.slice(0, 8), 16);
+if (checksum !== 0xFB7C80EC) {
+  console.error(`${checksumName} is not the theme. This check listens to the title screen, where only the theme plays; give FB7C80EC.mid.`);
+  process.exit(2);
+}
 
 // --- the page's zip reader, run here rather than reimplemented
 const page = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
@@ -149,7 +157,7 @@ const swapped = await themeAudio(true);
 const loud = b => { let n = 0; for (let i = 0; i < b.length; i += 8) if (Math.abs(b[i] - 128) > 4) n++; return n; };
 if (!loud(swapped.audio)) { console.error('FAIL: the substituted tune played silence'); process.exit(1); }
 const same = own.audio.length === swapped.audio.length && own.audio.equals(swapped.audio);
-if (same) { console.error('FAIL: installing the tune changed nothing that reached the mixer'); process.exit(1); }
+if (same) { console.error(`FAIL: the title screen sounded the same with ${checksumName} installed as without it`); process.exit(1); }
 console.log(`ok: ${checksumName} installed as MIDI and changed the music — ${loud(own.audio)} non-silent checks of the game's own, ${loud(swapped.audio)} of the substitute`);
 
 // --- and clearing puts the game's own music back
