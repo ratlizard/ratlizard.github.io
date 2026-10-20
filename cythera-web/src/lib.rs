@@ -256,6 +256,8 @@ fn browser_save_path(path: &str) -> bool {
         || lower.starts_with("system folder/temporary items/")
         || lower.starts_with("temporary items/")
         || lower.starts_with("trash/")
+        // Caches such as Carmen Sandiego's SNDCACHE.TMP, rebuilt each run.
+        || lower.ends_with(".tmp")
     {
         return false;
     }
@@ -338,6 +340,83 @@ pub extern "C" fn cw_import(
     .unwrap_or(-1)
 }
 
+#[link(wasm_import_module = "env")]
+extern "C" {
+    /// The page fills `len` bytes at `ptr` with lazy file `key` (its place in
+    /// the bundle's manifest) and returns nonzero on success. Synchronous:
+    /// the guest is mid-read when this runs.
+    fn cw_host_lazy_fetch(key: u32, ptr: *mut u8, len: usize) -> i32;
+}
+
+/// Put a file on the disk whose bytes the page supplies through
+/// `cw_host_lazy_fetch` when the game first reads it, and drops again under
+/// `cw_lazy_evict`. For a CD too large for the module's memory. The path
+/// buffer comes from `cw_alloc` and is owned here afterwards. Call between
+/// `cw_load` and `cw_start`. Returns -1 when nothing is loaded.
+#[no_mangle]
+pub extern "C" fn cw_import_lazy(
+    path_ptr: *mut u8,
+    path_len: usize,
+    len: usize,
+    key: u32,
+    file_type: u32,
+    creator: u32,
+    finder_flags: u32,
+) -> i32 {
+    let path_bytes = unsafe { Vec::from_raw_parts(path_ptr, path_len, path_len) };
+    let path = String::from_utf8_lossy(&path_bytes).into_owned();
+    LAZY_LOADER.with(|installed| {
+        if !installed.replace(true) {
+            systemless::set_lazy_fork_loader(Box::new(|key, len, bytes| {
+                *bytes = vec![0; len];
+                unsafe { cw_host_lazy_fetch(key, bytes.as_mut_ptr(), len) != 0 }
+            }));
+        }
+    });
+    with_state(|s| {
+        s.runner
+            .import_lazy_vfs_file(&path, len, key, file_type, creator, finder_flags as u16);
+        if let Some(stat) = s.runner.vfs_file_stats_where(|candidate| candidate.eq_ignore_ascii_case(&path)).into_iter().next() {
+            LAZY_PATHS.with(|paths| paths.borrow_mut().insert(stat.path));
+        }
+        0
+    })
+    .unwrap_or(-1)
+}
+
+thread_local! {
+    static LAZY_LOADER: Cell<bool> = const { Cell::new(false) };
+    /// Paths registered with `cw_import_lazy`, as the save scan spells them.
+    static LAZY_PATHS: RefCell<std::collections::HashSet<String>> = RefCell::new(Default::default());
+}
+
+/// Drop least recently read lazy files until at most `budget` bytes of them
+/// stay in the module's memory. Call between `cw_run` slices only. Returns
+/// how many were dropped.
+#[no_mangle]
+pub extern "C" fn cw_lazy_evict(budget: u32) -> u32 {
+    systemless::evict_lazy_forks(budget as usize) as u32
+}
+
+/// Bytes of lazy files now in the module's memory.
+#[no_mangle]
+pub extern "C" fn cw_lazy_resident() -> u32 {
+    systemless::lazy_fork_resident().0 as u32
+}
+
+/// Lazy file loads so far.
+#[no_mangle]
+pub extern "C" fn cw_lazy_loads() -> u32 {
+    systemless::lazy_fork_load_stats().0 as u32
+}
+
+/// Interpolate sounds played below the output rate instead of repeating
+/// their samples (`systemless::sound::set_interpolate_upsampling`).
+#[no_mangle]
+pub extern "C" fn cw_set_interpolate_upsampling(on: u32) {
+    systemless::sound::set_interpolate_upsampling(on != 0);
+}
+
 /// Collect the files that changed since the last acknowledged scan and
 /// return how many there are. The accessors below address them by index
 /// until `cw_save_ack` or the next scan.
@@ -347,6 +426,12 @@ pub extern "C" fn cw_save_scan() -> u32 {
         s.pending.clear();
         let stats = s.runner.vfs_file_stats_where(browser_save_path);
         for stat in stats {
+            // A lazy file is CD content: read-only, and checksumming it would
+            // load it.
+            let is_lazy = LAZY_PATHS.with(|paths| paths.borrow().contains(&stat.path));
+            if is_lazy {
+                continue;
+            }
             let untouched = !s.synced.contains_key(&stat.path)
                 && s
                     .baseline

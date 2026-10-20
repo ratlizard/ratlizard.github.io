@@ -247,7 +247,44 @@ function say(s) { logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollH
 const dec = new TextDecoder();
 let wasm, mem;
 let logCalls = 0;
-const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffer, p, n))); } };
+const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffer, p, n))); },
+  // Lazy CD files (Carmen test build): the module asks for one when the game
+  // first reads it, mid-instruction, so the fetch is synchronous. A
+  // synchronous XHR cannot ask for an ArrayBuffer on the page's thread, so the
+  // bytes come back as a string of one char per byte.
+  cw_host_lazy_fetch(key, ptr, len) {
+    const entry = lazyManifest[key];
+    if (!entry) return 0;
+    const t0 = performance.now();
+    try {
+      const x = new XMLHttpRequest();
+      x.open('GET', entry.url, false);
+      x.overrideMimeType('text/plain; charset=x-user-defined');
+      x.send();
+      const text = x.responseText;
+      if (text.length !== len) { console.log(`[lazy] ${entry.path}: ${text.length} bytes, wanted ${len}`); return 0; }
+      const dst = new Uint8Array(mem.buffer, ptr, len);
+      for (let i = 0; i < len; i++) dst[i] = text.charCodeAt(i);
+    } catch (e) { console.log(`[lazy] ${entry.path}: ${e}`); return 0; }
+    lazyLoadMs += performance.now() - t0;
+    console.log(`[lazy] ${entry.path} ${(len / 1048576).toFixed(1)} MB in ${(performance.now() - t0).toFixed(0)} ms`);
+    return 1;
+  } };
+let lazyManifest = [], lazyLoadMs = 0;
+// Lazy files the module may keep in memory at once; the least recently read
+// beyond this are dropped between frames.
+const LAZY_BUDGET = 128 * 1048576;
+async function importLazyFiles() {
+  let list;
+  try { list = await (await fetch('files/manifest.json')).json(); } catch (e) { return 0; }
+  lazyManifest = list;
+  list.forEach((entry, key) => {
+    const path = new TextEncoder().encode(entry.path);
+    const p = wasm.cw_alloc(path.length); new Uint8Array(mem.buffer, p, path.length).set(path);
+    wasm.cw_import_lazy(p, path.length, entry.size, key, entry.type >>> 0, entry.creator >>> 0, 0);
+  });
+  return list.length;
+}
 // Each change in the size of the module's heap goes to the log. A phone has far less room
 // than a desktop and growing a WebAssembly memory on one is not free, so if a
 // long frame lines up with a jump here that is the thing to chase.
@@ -441,6 +478,9 @@ const MAC_EPOCH_OFFSET = 2082844800;
 function chooseScreen() {
   const q = new URLSearchParams(location.search);
   if (q.get('w') && q.get('h')) return [Math.max(640, +q.get('w')), Math.max(480, +q.get('h'))];
+  // Carmen: the game's own 640x480, so its picture fills the screen with no
+  // border (it hides the Mac menu bar at that size).
+  return [640, 480];
   const body = document.body.getBoundingClientRect(), bar = document.getElementById('bar').getBoundingClientRect();
   const stage = document.getElementById('stage');
   const insetX = stage.offsetWidth - stage.clientWidth, insetY = stage.offsetHeight - stage.clientHeight;
@@ -485,6 +525,8 @@ async function bootOnce() {
   const rc = wasm.cw_load(p, bytes.length, Math.floor(Date.now() / 1000) + MAC_EPOCH_OFFSET, sw, sh);
   if (rc !== 0) throw new Error(dec.decode(new Uint8Array(mem.buffer, wasm.cw_error_ptr(), wasm.cw_error_len())));
   noteHeap();
+  const lazyCount = await importLazyFiles();
+  if (lazyCount) say(`${lazyCount} CD files on the disk, read when the game needs them`);
   const restored = await restoreSaves();
   const tunes = await restoreMusic();
   const patched = await applyPatches();
@@ -1943,7 +1985,7 @@ class GuestAudio extends AudioWorkletProcessor {
     this.step = o.processorOptions.rate / sampleRate;
     this.buf = new Float32Array(o.processorOptions.capacity);
     this.read = 0; this.written = 0; this.last = 0; this.vel = 0; this.starved = 0; this.n = 0;
-    this.wasDry = false; this.hold = 0; this.holdVel = 0; this.mix = 1;
+    this.wasDry = false; this.hold = 0; this.holdVel = 0; this.mix = 1; this.loudGaps = 0;
     this.port.onmessage = e => {
       if (e.data === 'reset') { this.read = 0; this.written = 0; this.last = 0; this.vel = 0; this.wasDry = true; return; }
       const s = e.data, cap = this.buf.length;
@@ -1971,6 +2013,10 @@ class GuestAudio extends AudioWorkletProcessor {
         // scale -- and the level is clamped in case it tries. The read
         // position stays where it is, so the stream picks up where it left
         // off when samples come in again.
+        // A gap that starts while the wave is still audible is a dropout in
+        // the middle of a sound; one that starts in silence is the game
+        // playing nothing. Only the first is a fault.
+        if (!this.wasDry && Math.abs(this.last) > 2 / 128) this.loudGaps++;
         this.vel *= 0.8;
         this.last = Math.max(-1, Math.min(1, (this.last + this.vel) * 0.999));
         // Only count a gap once there has been something to play: this node is
@@ -2005,7 +2051,7 @@ class GuestAudio extends AudioWorkletProcessor {
       this.vel = outv - this.last; out[i] = this.last = outv;
       this.read += this.step;
     }
-    if ((this.n = (this.n + 1) % 8) === 0) this.port.postMessage({ consumed: this.read, starved: this.starved });
+    if ((this.n = (this.n + 1) % 8) === 0) this.port.postMessage({ consumed: this.read, starved: this.starved, loudGaps: this.loudGaps });
     return true;
   }
 }
@@ -2017,7 +2063,7 @@ registerProcessor('guest-audio', GuestAudio);
 // sound channels expect.
 const AUDIO_TARGET = Math.round(RATE * 0.18), AUDIO_CAPACITY = Math.round(RATE * 0.5);
 let audioNode = null, audioMode = 'pending', audioQueued = 0, audioConsumed = 0, audioStarved = 0;
-let audioConsumedAt = 0, audioStarvedSeen = 0;
+let audioConsumedAt = 0, audioStarvedSeen = 0, audioLoudGaps = 0;
 // How much sound is still in the ring. The worklet posts the position it has read to
 // every eight callbacks, and that message waits behind whatever the main
 // thread is doing -- which, in the middle of the emulator, is tens of
@@ -2099,7 +2145,7 @@ function startWorklet() {
       processorOptions: { rate: RATE, capacity: AUDIO_CAPACITY },
     });
     node.port.onmessage = e => {
-      audioConsumed = e.data.consumed; audioConsumedAt = audioCtx.currentTime; audioStarved = e.data.starved;
+      audioConsumed = e.data.consumed; audioConsumedAt = audioCtx.currentTime; audioStarved = e.data.starved; audioLoudGaps = e.data.loudGaps;
     };
     node.connect(audioCtx.destination);
     audioNode = node; audioMode = 'worklet';
@@ -2132,7 +2178,7 @@ function audioReport() {
   const media = silentMedia ? (silentMedia.paused ? 'paused' : 'playing') : 'none';
   const since = audioStarved - audioStarvedSeen; audioStarvedSeen = audioStarved;
   const path = audioNode
-    ? `one node, ${Math.round(ringAhead())} samples ahead, ran dry ${since} times since the last of these (${audioStarved} in all)`
+    ? `one node, ${Math.round(ringAhead())} samples ahead, ran dry ${since} times since the last of these (${audioStarved} in all), ${audioLoudGaps} gaps in the middle of a sound`
     : `buffer a frame (${audioMode})`;
   say(`audio: context ${audioCtx.state} at ${audioCtx.sampleRate} Hz, ${audioPushed} samples pushed, ${audioLoud} loud checks, media session ${media}, ${path}`);
   if (booted) say('sound path: ' + dec.decode(new Uint8Array(mem.buffer, wasm.cw_audio_debug(), wasm.cw_audio_debug_len())));
@@ -2389,9 +2435,10 @@ function play() {
       statEl.textContent = `${W}x${H}, ${(rate / 1e6).toFixed(1)} M/s, ${wasm.cw_tick() - deadline} ticks, ${(ipt / 1000).toFixed(0)}k/tick`;
       insWindow = 0; winT = now;
       noteHeap();
-      if (++reports === 5 || reports === 30) audioReport();
+      if (++reports === 5 || reports % 30 === 0) audioReport();
     }
     pushAudio();
+    if (lazyManifest.length) wasm.cw_lazy_evict(LAZY_BUDGET);
     const drawFrom = performance.now(); present(); const drawMs = performance.now() - drawFrom;
     noteSlowFrame(now, 'play', guestMs, drawMs, steps);
     requestAnimationFrame(frame);
@@ -2418,11 +2465,23 @@ function guestPoint(e) {
 // is unaffected because its release comes later anyway.
 const MIN_HOLD_MS = 160;
 let downAt = 0, pendingUp = null;
+// Where in Time is Carmen Sandiego? misses a press released within about 5
+// guest ticks when the host is slow (a Board, or Chrome throttled 4x), though
+// natively a press and release in one tick is a click. So the release also
+// waits for MIN_HOLD_TICKS of guest clock, which a slow host may fall behind.
+const MIN_HOLD_TICKS = 8;
+let downTick = 0;
 function mouseUpAt(v, h) {
-  const wait = downAt + MIN_HOLD_MS - performance.now();
   if (pendingUp) clearTimeout(pendingUp);
-  if (wait > 0) pendingUp = setTimeout(() => { pendingUp = null; wasm.cw_mouse_up(v, h); }, wait);
-  else wasm.cw_mouse_up(v, h);
+  const release = () => {
+    const wait = downAt + MIN_HOLD_MS - performance.now();
+    if (wait > 0 || wasm.cw_tick() < downTick + MIN_HOLD_TICKS) {
+      pendingUp = setTimeout(release, Math.max(16, wait));
+      return;
+    }
+    pendingUp = null; wasm.cw_mouse_up(v, h);
+  };
+  release();
 }
 /* Two fingers zoom and pan the screen; one finger is the game's mouse, as it
    always was. The zoom is a transform on the canvas, clamped so the picture
@@ -2478,7 +2537,7 @@ function pinchState() {
 }
 function pressAt(e) {
   if (pendingUp) { clearTimeout(pendingUp); pendingUp = null; const [pv, ph] = guestPoint(e); wasm.cw_mouse_up(pv, ph); }
-  const [v, h] = guestPoint(e); wasm.cw_mouse_move(v, h); wasm.cw_mouse_down(v, h); downAt = performance.now();
+  const [v, h] = guestPoint(e); wasm.cw_mouse_move(v, h); wasm.cw_mouse_down(v, h); downAt = performance.now(); downTick = wasm.cw_tick();
   pressId = e.pointerId;
 }
 function commitPending() {
@@ -2664,4 +2723,101 @@ function macChar(e) {
 window.addEventListener('keydown', e => { if (!booted || e.target.tagName === 'INPUT') return; const k = MAC_KEY[e.code]; if (k === undefined) return; e.preventDefault(); if (!e.repeat) wasm.cw_key_down(k, macChar(e)); });
 window.addEventListener('keyup', e => { if (!booted) return; const k = MAC_KEY[e.code]; if (k === undefined) return; e.preventDefault(); wasm.cw_key_up(k, macChar(e)); });
 
+</script>
+<style>
+/* Carmen mode: the game alone, filling the screen; Cythera's bar and pads hidden. */
+body.carmen #bar, body.carmen #move, body.carmen #act, body.carmen #boardprobe { display: none !important; }
+body.carmen #stage { position: fixed; inset: 0; }
+#carmenbar { position: fixed; top: 8px; right: 8px; display: flex; gap: 8px; z-index: 50; }
+#carmenbar button, #carmenbar .k { font: 600 18px system-ui, sans-serif; padding: 10px 16px; border-radius: 10px;
+  background: rgba(30,30,30,.55); color: #eee; border: 1px solid rgba(255,255,255,.25); width: auto; height: auto; }
+#carmenbar .k small { display: none; }
+</style>
+<script>
+// Where in Time is Carmen Sandiego? on a Board. The page starts the game by
+// itself and shows only the game, a Keyboard button (the drawn keyboard, for
+// the agent's name) and, in the Board app, Quit. With ?autopilot=1 it also
+// signs in as "sam" and presses PLAY GAME, for unattended tests; it logs
+// speed, heap and lazy-file figures every 5 s either way.
+(function () {
+  const t0 = performance.now();
+  const q = new URLSearchParams(location.search);
+  const log = s => console.log('[carmen] ' + s);
+  document.body.classList.add('carmen');
+  const bar = document.createElement('div'); bar.id = 'carmenbar';
+  const toggle = document.getElementById('kbtoggle');
+  if (toggle) { toggle.querySelector('small')?.remove(); toggle.firstChild.textContent = 'Keyboard'; bar.appendChild(toggle); }
+  if (window.CarmenHost) {
+    const quit = document.createElement('button'); quit.textContent = 'Quit';
+    // The game saves a case in progress only when it quits itself, so Quit
+    // gives it Command-Q and waits up to 5 s for it to stop. Its writes reach
+    // the page's store every 2 s; store the last of them before the app
+    // closes.
+    quit.onclick = async () => {
+      quit.disabled = true;
+      try {
+        if (booted && wasm.cw_running()) {
+          log('quit: Command-Q to the game');
+          wasm.cw_key_down(0x37, 0); wasm.cw_key_down(0x0C, 113);
+          await new Promise(r => setTimeout(r, 150));
+          wasm.cw_key_up(0x0C, 113); wasm.cw_key_up(0x37, 0);
+          for (let i = 0; i < 50 && wasm.cw_running(); i++) await new Promise(r => setTimeout(r, 100));
+          log(wasm.cw_running() ? 'quit: the game did not stop; closing anyway' : 'quit: the game stopped');
+        }
+        while (syncing) await new Promise(r => setTimeout(r, 50));
+        await syncSaves();
+      } catch (e) {}
+      window.CarmenHost.quit();
+    };
+    bar.appendChild(quit);
+  }
+  document.body.appendChild(bar);
+  const startPlay = setInterval(() => {
+    const b = document.getElementById('play');
+    if (b && !b.disabled) { clearInterval(startPlay); log('pressing Play at ' + Math.round(performance.now() - t0) + ' ms'); b.click(); }
+  }, 250);
+  const hold = +(q.get('hold') || 40);
+  const T0 = +(q.get('typeat') || 1600);
+  const steps = q.get('autopilot') !== '1' ? [] : [
+    // One key per step, as taps on the keyboard would come; TYPE_AT moves
+    // the sign-in later for a slow host.
+    [T0, () => { wasm.cw_key_down(1, 115); wasm.cw_key_up(1, 115); log('typed s'); }],
+    [T0 + 10, () => { wasm.cw_key_down(0, 97); wasm.cw_key_up(0, 97); log('typed a'); }],
+    [T0 + 20, () => { wasm.cw_key_down(46, 109); wasm.cw_key_up(46, 109); log('typed m'); }],
+    [T0 + 40, () => { wasm.cw_key_down(36, 13); wasm.cw_key_up(36, 13); log('pressed Return'); }],
+    [T0 + 100, () => { wasm.cw_mouse_move(202, 370); wasm.cw_mouse_down(202, 370); log('mouse down on the first roster name'); }],
+    [T0 + 103, () => { wasm.cw_mouse_up(202, 370); log('mouse up'); }],
+    [T0 + 160, () => { wasm.cw_mouse_move(360, 441); wasm.cw_mouse_down(360, 441); log('mouse down on PLAY GAME'); }],
+    [T0 + 160 + hold, () => { wasm.cw_mouse_up(360, 441); log('mouse up'); }],
+    // Space skips the opening, the briefing and the time tunnel.
+    ...Array.from({ length: 45 }, (_, i) => [T0 + 400 + 120 * i, () => { wasm.cw_key_down(49, 32); wasm.cw_key_up(49, 32); }]),
+  ];
+  // Every press, release and key, in guest coordinates, for reports from a
+  // Board, whose own probe logs only the first three of each.
+  const at = e => { const [v, h] = guestPoint(e); return `v ${v} h ${h}`; };
+  const tickNow = () => booted ? wasm.cw_tick() : '-';
+  for (const type of ['pointerdown', 'pointerup', 'pointercancel']) {
+    canvas.addEventListener(type, e => log(`input: ${type.slice(7)} ${e.pointerType} ${at(e)} tick ${tickNow()}`), { passive: true });
+  }
+  kb.addEventListener('keydown', e => log(`input: key ${JSON.stringify(e.key)} code ${e.keyCode} tick ${tickNow()}`), { passive: true });
+  kb.addEventListener('input', e => log(`input: typed ${JSON.stringify(e.data)} (${e.inputType}) tick ${tickNow()}`), { passive: true });
+  let next = 0, lastTick = 0, lastT = 0, stepTick = -1, smooth = false;
+  setInterval(() => {
+    if (!booted) return;
+    // The game mixes its own sound at 11,025 Hz; repeating each sample up to
+    // the output rate is heard on the Board as hiss.
+    if (!smooth && wasm.cw_set_interpolate_upsampling) { wasm.cw_set_interpolate_upsampling(1); smooth = true; log('sound: interpolated upsampling'); }
+    const tick = wasm.cw_tick();
+    if (next < steps.length && tick >= steps[next][0] && tick >= stepTick + 1) {
+      steps[next][1](); next++; stepTick = tick; log('step at guest tick ' + tick);
+    }
+  }, 50);
+  setInterval(() => {
+    if (!booted) return;
+    const now = performance.now(), tick = wasm.cw_tick();
+    const rate = lastT ? ((tick - lastTick) / ((now - lastT) / 1000)).toFixed(1) : '-';
+    log(`wall ${((now - t0) / 1000).toFixed(0)} s, guest tick ${tick} (${rate} ticks/s), status "${statEl.textContent}", heap ${mem.buffer.byteLength >> 20} MB, lazy ${(wasm.cw_lazy_resident() / 1048576).toFixed(0)} MB resident, ${wasm.cw_lazy_loads()} loads, ${(lazyLoadMs / 1000).toFixed(1)} s loading`);
+    lastTick = tick; lastT = now;
+  }, 5000);
+})();
 </script>

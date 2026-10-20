@@ -48,6 +48,9 @@ rm -rf dist && mkdir -p dist
 cp -R "$www/delv" "$www/qt-music.js" dist/
 cp "$WASM" dist/cythera_web.wasm
 [ -z "$GAME" ] || cp -L "$GAME" dist/game.sit
+# LAZY: a folder of CD files the game reads when it needs them, rather than
+# loaded with the archive (Carmen test build; lazy_files.py).
+[ -z "${LAZY-}" ] || python3 "$here/lazy_files.py" "$LAZY" dist/files
 cp "$MODEL" dist/model.tflite
 [ -z "$QT" ] || cp "$QT" dist/QUICKTIM.EXE
 if [ -n "$TUNES" ]; then
@@ -86,4 +89,12 @@ grep -q "window.boardScreen(vw, vh)" dist/index.html
 [ "$tunes" = false ] || grep -q "window.boardTunes" dist/index.html
 [ -z "$QT" ] || grep -q "^const QT_INSTALLER_URL = 'QUICKTIM.EXE';" dist/index.html
 
-npx web-pack dist --name Deerlizard --model model.tflite -o cythera.webapp.zip
+# A build with LAZY is the Carmen test build. Its package and app ids are
+# given here rather than in board.config.json, so it never replaces the
+# Cythera app on a Board.
+if [ -n "${LAZY-}" ]; then
+  npx web-pack dist --name "Carmen Test" --package-id io.github.ratlizard.carmentest4 \
+    --app-id 261feb96-ca32-4d23-86d7-f77ec03b52ea --model model.tflite -o carmen.webapp.zip
+else
+  npx web-pack dist --name Deerlizard --model model.tflite -o cythera.webapp.zip
+fi
