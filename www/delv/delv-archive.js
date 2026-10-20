@@ -708,8 +708,8 @@ function byteEntropy(data) {
  * is mostly bytes above 0x80 and scores a printable ratio near 0.1; an `asnd`
  * body is signed samples. So on the old score -- printable ratio minus
  * entropy over 32 -- noise BEAT every graphic, sound and table in the
- * archive. It was not settling cases badly; it was biased towards "decrypt" by
- * construction, which is why it scored below a coin flip.
+ * archive. The trouble was not bad calls on hard cases; it was biased towards
+ * "decrypt" by construction, which is why it scored below a coin flip.
  *
  * So each test below tests whether the bytes are a payload the archive is
  * known to hold, and every one of them is derived from a format the rest of
@@ -2340,8 +2340,8 @@ function buildNewScenario(arc, o) {
 
   // The creatures asked for, each an egg certain to hatch with one creature
   // in it, as the shipped hatcheries are written (save-format.md, *Kind 0
-  // is the hatchery*): the egg 0x42 with 100 in Data2, and the record it
-  // inside it 0x08, its location's low half-word the egg's index plus 0x100
+  // is the hatchery*): the egg 0x42 with 100 in Data2, and the record inside
+  // it flagged 0x08, its location's low half-word the egg's index plus 0x100
   // under a 1, its Data1 the behaviour the creature starts with.
   // An egg may have a chance under 100 and a stock over 1. Things placed
   // (`props`, each { x, y, type, aspect, rotated }) come after the eggs, as
