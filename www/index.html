@@ -170,15 +170,15 @@
   <span id="stat">loading module…</span>
 </div><button id="barleft" class="barmore" aria-label="more controls to the left">‹</button><button id="barright" class="barmore" aria-label="more controls to the right">›</button></div>
 <div id="menupanel" class="panel" hidden>
-  <div class="row"><b>Menus</b> <span class="dim">the game's own menu bar, which a finger cannot reach at the top of the screen</span> <button id="menuclose">Close</button></div>
+  <div class="row"><b>Menus</b> <span class="dim">the game's menu bar, which a finger cannot reach at the top of the screen</span> <button id="menuclose">Close</button></div>
   <div id="menus"></div>
 </div>
 <div id="cheatpanel" class="panel" hidden>
-  <div class="row"><b>Cheats</b> <span class="dim">the game's own cheat mode, read out of its executable</span> <button id="cheatclose">Close</button></div>
+  <div class="row"><b>Cheats</b> <span class="dim">the game's cheat mode, read out of its executable</span> <button id="cheatclose">Close</button></div>
   <div class="row" id="cheatstatus"></div>
   <div class="row"><button id="cheatenable">Enable cheat mode in the preferences and reload</button> <span class="dim">sets bit 0 of the fourth byte of UI Prefs, which nothing in the game sets; the game reads it at launch</span></div>
   <div class="row"><button id="cheatcode">Type the code (©gra)</button> <span class="dim">in the map window, with a game open; the log says "Cheat mode activated."</span></div>
-  <div class="row"><b>Cheat keys</b> <span class="dim">each is option plus a letter; the ones that ask a number read it from what you type next (Type button), in hex unless said</span></div>
+  <div class="row"><b>Cheat keys</b> <span class="dim">each is option plus a letter; the ones that ask a number read it from what you type next (Type button), in hex unless marked decimal</span></div>
   <div id="cheatkeys" class="grid" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));"></div>
 </div>
 <div id="savespanel" class="panel" hidden>
@@ -216,8 +216,8 @@
   <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav,.exe,.qtx" multiple hidden></label></div>
   <div class="row"><select id="musicsource"></select> <a id="musicdownload" class="linkbtn" target="_blank" rel="noopener">Download</a> <button id="musicfetch">Fetch</button></div>
   <div class="row"><input id="musicurl" type="url" placeholder="https://… any other zip"> <button id="musicload">Fetch</button></div>
-  <div class="row dim">cytheraguides.com does not allow another site to read its files, so Fetch fails there and there is nothing this page can do about it. <b>Download</b> opens the chosen set in a new tab; save it, then use <b>Choose a zip</b> above. Fetch is kept for a site that does allow it.</div>
-  <div class="row"><button id="musicclear">Remove all, and play the game's own music</button></div>
+  <div class="row dim">cytheraguides.com does not allow another site to read its files, so Fetch fails there. <b>Download</b> opens the chosen set in a new tab; save it, then use <b>Choose a zip</b> above. Fetch is kept for a site that does allow it.</div>
+  <div class="row"><button id="musicclear">Remove all, and play the game's music</button></div>
   <div class="row"><table id="musictable"></table></div>
 </div>
 <div id="patchpanel" class="panel" hidden>
@@ -1323,7 +1323,7 @@ async function renderMusic() {
   const kindName = k => k === 2 ? 'recording' : k === 1 ? 'MIDI' : '';
   musicTable.innerHTML = '<tr><th>Tune</th><th>Playing</th><th>Kind</th></tr>' + GAME_TUNES.map(t => {
     const r = by.get(t.sum >>> 0);
-    return `<tr><td>${t.name}</td><td>${r ? r.name.replace(/</g, '&lt;') : '<span class="dim">the game’s own' + (qt.installed.has(t.sum >>> 0) ? ', on QuickTime’s instruments' : '') + '</span>'}</td><td>${r ? kindName(r.kind) : ''}</td></tr>`;
+    return `<tr><td>${t.name}</td><td>${r ? r.name.replace(/</g, '&lt;') : '<span class="dim">the game’s tune' + (qt.installed.has(t.sum >>> 0) ? ', on QuickTime’s instruments' : '') + '</span>'}</td><td>${r ? kindName(r.kind) : ''}</td></tr>`;
   }).join('');
 }
 document.getElementById('musicbtn').onclick = () => { musicPanel.hidden = !musicPanel.hidden; if (!musicPanel.hidden) renderMusic(); };
@@ -1371,13 +1371,13 @@ document.getElementById('musicclear').onclick = async () => {
   wasm.cw_tune_clear();
   qt.user.clear();
   await qtRestart();
-  say('music: removed; the game plays its own again from the next tune');
+  say('music: removed; the game\'s music plays again from the next tune');
   renderMusic();
 };
 document.getElementById('qtmusic').onchange = async e => {
   try { localStorage.setItem('qtmusic', e.target.checked ? '1' : '0'); } catch (err) {}
   await qtRestart();
-  say(e.target.checked ? "music: the game's own tunes play on QuickTime 3's instruments from the next tune" : "music: the game's own tunes play on the built-in instruments from the next tune");
+  say(e.target.checked ? "music: the game's tunes play on QuickTime 3's instruments from the next tune" : "music: the game's tunes play on the built-in instruments from the next tune");
   renderMusic();
 };
 
