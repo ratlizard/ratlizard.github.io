@@ -16,9 +16,9 @@
 //
 // The measure is the largest second difference anywhere in the output, which
 // does not depend on knowing where the joins fell. Two things put one there
-// even when nothing is wrong: the wave's own curvature, 1.7e-3 for 440 Hz at
+// even when nothing is wrong: the wave's curvature, 1.7e-3 for 440 Hz at
 // 48 kHz, and the corner at each guest sample left by reading between samples
-// in a straight line, 3.6e-3 -- the same roughness Chrome's own resampling
+// in a straight line, 3.6e-3 -- the same roughness Chrome's resampling
 // leaves, and small against an 8-bit source. A step or a skipped sample is far
 // above both: skipping three samples at every feed, the negative control this
 // was written against, reads 1.9e-1.
@@ -31,7 +31,7 @@ const m = page.match(/const AUDIO_WORKLET_SOURCE = `([\s\S]*?)`;\n/);
 if (!m) { console.error('could not find AUDIO_WORKLET_SOURCE in index.html'); process.exit(1); }
 
 const RATE = 22050, CTX = 48000, QUANTUM = 128, FREQ = 440, AMP = 0.5;
-const OWN = AMP * Math.pow(2 * Math.PI * FREQ / CTX, 2);   // the wave's own second difference
+const OWN = AMP * Math.pow(2 * Math.PI * FREQ / CTX, 2);   // the wave's second difference
 // The corner left at each guest sample by reading between samples in a
 // straight line: the curvature over one guest sample, in output steps.
 const KNOT = AMP * Math.pow(2 * Math.PI * FREQ / RATE, 2) * (RATE / CTX);
@@ -84,8 +84,8 @@ function roughest(o, skip = 256) {
   let fed = 0;
   for (let i = 0; i < 6; i++) { feed(sine(CHUNK, fed)); fed += CHUNK; }
   const o = [];
-  // Six quanta of output take 352.8 guest samples, so feeding 368 each time
-  // keeps the ring a little ahead without ever letting it run dry.
+  // Six quanta of output use 352.8 guest samples, so with 368 fed each time
+  // the ring stays a little ahead and never runs dry.
   for (let i = 0; i < 60; i++) { run(p, 6, o); feed(sine(CHUNK, fed)); fed += CHUNK; }
   const { worst, at } = roughest(o);
   check(worst < 2 * KNOT, 'a stream fed in pieces comes out with no step anywhere',
@@ -110,7 +110,7 @@ function roughest(o, skip = 256) {
   const back = [];
   run(p, 20, back);
   let peak = 0; for (const v of back) peak = Math.max(peak, Math.abs(v));
-  check(peak > 0.4, 'and picks up when samples arrive again', `peak ${peak.toFixed(3)}`);
+  check(peak > 0.4, 'and picks up when samples come again', `peak ${peak.toFixed(3)}`);
   // The join back on is the one the fade would otherwise have made loud: the
   // output had faded to nothing and the source is wherever it left off.
   const rough = roughest([o[o.length - 2], o[o.length - 1], ...back], 0);
@@ -118,7 +118,7 @@ function roughest(o, skip = 256) {
         `roughest ${rough.worst.toExponential(2)} at sample ${rough.at}, allowed ${(2 * KNOT).toExponential(2)}`);
 }
 
-// 3. a ring flooded past its capacity stays bounded, keeps playing, and does
+// 3. a ring flooded past its capacity stays bounded, plays on, and does
 //    not step where it drops the oldest -- which is what a load does to it
 {
   const cap = 1024;

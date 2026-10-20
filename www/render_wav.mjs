@@ -2,7 +2,7 @@
 // instruments, or a substitute tune, can be listened to rather than described.
 // Boots the module, optionally installs one substitute, plays the start-screen
 // theme on the wall-clock path for N seconds, and writes 22,050 Hz 8-bit mono
-// -- the format the guest's own sound channels carry.
+// -- the format of the guest's sound channels.
 //
 //   node render_wav.mjs <archive> <seconds> <out.wav> [XXXXXXXX.mid|.wav]
 //

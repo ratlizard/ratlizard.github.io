@@ -3,12 +3,12 @@
 # repository, and put it where www/index.html loads it.
 #
 # Two toolchain facts, both learned the hard way on 4 September 2026:
-# - rust-lld is dynamically linked against the toolchain's own libLLVM.dylib
+# - rust-lld is dynamically linked against the toolchain's libLLVM.dylib
 #   and is spawned without that directory on its loader path, so the link
 #   step aborts with "Library not loaded: @rpath/libLLVM.dylib" unless
 #   DYLD_FALLBACK_LIBRARY_PATH names it. `cargo check` never links, which is
 #   why tools/wasm_check.sh never saw this.
-# - Homebrew's rust has no wasm32 standard library and wins on PATH, so the
+# - Homebrew's rust has no wasm32 standard library and comes first on PATH, so the
 #   rustup toolchain is named explicitly, as tools/wasm_check.sh does.
 set -e
 TC="${RUSTUP_TOOLCHAIN_DIR:-$HOME/.rustup/toolchains/stable-aarch64-apple-darwin}"

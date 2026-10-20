@@ -1,6 +1,6 @@
 // Boot to the start screen, print the guest's menus as the page sees them,
-// choose one enabled File item through the runner's own MenuSelect path, and
-// prove the guest keeps running. Usage: node menus_smoke.mjs <archive>
+// choose one enabled File item through the runner's MenuSelect path, and
+// prove the guest is still running. Usage: node menus_smoke.mjs <archive>
 import { readFileSync } from 'node:fs';
 const wasmBytes = readFileSync(new URL('./cythera_web.wasm', import.meta.url));
 let mem; const dec = new TextDecoder();

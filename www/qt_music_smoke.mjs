@@ -47,7 +47,7 @@ async function boot() {
 }
 const put = (w, u8) => { const p = w.cw_alloc(u8.length); new Uint8Array(mem.buffer, p, u8.length).set(u8); return p; };
 
-// --- the tunes, off the module's disk as the page's readGameTunes takes them
+// --- the tunes, off the module's disk as the page's readGameTunes reads them
 const w0 = await boot();
 const name = enc.encode('Cythera Data');
 let p = put(w0, name);
@@ -62,7 +62,7 @@ for (let resid = 0x9000; resid <= 0x90FF; resid++) {
   if (d && d.length > 8) tunes.push({ resid, data: d, sum: g('qtTuneStreamChecksum')(d) });
 }
 if (tunes.length !== GAME_TUNES.length) fail(`${tunes.length} tunes in Cythera Data, ${GAME_TUNES.length} in the page's table`);
-tunes.forEach((t, i) => { if (t.sum !== (GAME_TUNES[i].sum >>> 0)) fail(`0x${t.resid.toString(16)} checksums to ${t.sum.toString(16)}, the page's table says ${GAME_TUNES[i].sum.toString(16)} (${GAME_TUNES[i].name})`); });
+tunes.forEach((t, i) => { if (t.sum !== (GAME_TUNES[i].sum >>> 0)) fail(`0x${t.resid.toString(16)} checksums to ${t.sum.toString(16)}, the page's table has ${GAME_TUNES[i].sum.toString(16)} (${GAME_TUNES[i].name})`); });
 // The control: one bit of a tune changed has to change its number.
 const bent = tunes[0].data.slice(); bent[bent.length - 9] ^= 1;
 if (g('qtTuneStreamChecksum')(bent) === tunes[0].sum) fail('the checksum did not notice a changed tune');
@@ -104,7 +104,7 @@ async function themeAudio(install) {
 }
 const own = await themeAudio(false), swapped = await themeAudio(true);
 const loud = b => { let n = 0; for (let i = 0; i < b.length; i += 8) if (Math.abs(b[i] - 128) > 4) n++; return n; };
-if (!loud(own)) fail('the game\'s own theme played silence, so this run says nothing');
+if (!loud(own)) fail('the game\'s theme played silence, so this run shows nothing');
 if (!loud(swapped)) fail('the rendered theme played silence');
 if (own.length === swapped.length && own.equals(swapped)) fail('installing the render changed nothing that reached the mixer');
 console.log(`ok: the theme's render installed as a recording and changed the music: ${loud(own)} non-silent checks of the built-in instruments, ${loud(swapped)} of QuickTime's`);

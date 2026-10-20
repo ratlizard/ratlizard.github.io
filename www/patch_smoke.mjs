@@ -94,13 +94,13 @@ else {
   if (!existsSync(hqx)) console.log('  skip  the Pumpkin Patch is not in the add-ons');
   else {
     // The published file: BinHex around StuffIt around the patch, with a
-    // method-13 data fork. It is opened rather than refused since the reader
+    // method-13 data fork. It is opened rather than rejected since the reader
     // learned method 13, which is the whole point of the section on a phone --
     // there is no desktop there to extract it on.
     let got = null, msg = '';
     try { got = unwrap('614_MagpiePumpkinPatch.sit.hqx', new Uint8Array(readFileSync(hqx))); }
     catch (e) { msg = e.message; }
-    if (!got) fail('the published .hqx', 'it was refused: ' + msg);
+    if (!got) fail('the published .hqx', 'it was rejected: ' + msg);
     else if (!/Pumpkin Patch/.test(got.name))
       fail('the published .hqx', `it opened as ${JSON.stringify(got.name)}, not the patch`);
     else if (!describe(got.bytes))
@@ -125,7 +125,7 @@ else {
     if (bare.bytes.length !== patch.length) fail('the bare patch', 'it was unwrapped as something');
     else ok('the bare patch passes through untouched', bare.bytes.length.toLocaleString() + ' B');
 
-    // The same patch inside MacBinary: the wrapper the page's own export
+    // The same patch inside MacBinary: the wrapper the page's export
     // writes, so a patch exported from one browser and given to another works.
     const mb = new Uint8Array(128 + ((patch.length + 127) & ~127));
     const name = 'Pumpkin Patch';

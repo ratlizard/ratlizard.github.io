@@ -1,10 +1,10 @@
-// Does a tune library reach the game through the page's own code?
+// Does a tune library reach the game through the page's code?
 //
 // Two halves, because they fail differently. The zip reader is lifted out of
 // index.html and run over a zip built here with one stored entry and one
 // deflated one, so a change to it is caught without a browser. Then the
 // module is booted, the MIDI is installed for the tune it replaces, and the
-// audio is compared with the same seconds of the game's own music: a
+// audio is compared with the same seconds of the game's music: a
 // substitute that installs but never reaches the mixer would otherwise look
 // like a pass.
 //
@@ -40,11 +40,11 @@ const tunesFrom = page.indexOf('const GAME_TUNES = [');
 const order = '\n' + page.slice(tunesFrom, page.indexOf('];', tunesFrom) + 2) +
   '\n' + page.slice(page.indexOf('function naturalOrder'), page.indexOf('\n}', page.indexOf('function naturalOrder')) + 2);
 // The reader checks each entry's CRC with grimoire's crc32, which the page
-// loads from delv/mac-bytes.js before its own script.
+// loads from delv/mac-bytes.js before the page's script.
 const macBytes = readFileSync(new URL('./delv/mac-bytes.js', import.meta.url), 'utf8');
 const dec = new TextDecoder();
 let warnings = 0;
-const say = m => { warnings++; console.log('  page said:', m); };
+const say = m => { warnings++; console.log('  page printed:', m); };
 const { unzip, MUSIC_NAME, naturalOrder, GAME_TUNES } = await import(
   'data:text/javascript;base64,' +
   Buffer.from(`export const __f = (dec, say) => { ${macBytes}\n${src}${order}; return { unzip, MUSIC_NAME, naturalOrder, GAME_TUNES }; };`).toString('base64')
@@ -99,9 +99,9 @@ for (const e of entries) {
 }
 console.log(`ok: the zip reader returned ${entries.length} tune files, stored and deflated, byte for byte, and passed over readme.txt`);
 
-// --- track order: the mapping a zip gets when nothing is named for a tune
+// --- track order: the mapping a zip is given when nothing is named for a tune
 {
-  // The names the guides site's Volume I MIDI zip actually carries.
+  // The names that the guides site's Volume I MIDI zip actually has.
   const folders = ['001_Originals', '002_Standardized'];
   const tracks = ['001_Cythera_Theme', '002_Land_King_Hall', '003_Underground', '004_Overworld',
     '005_Odemia', '006_Danger', '007_Seldane', '008_Pnyx', '009_Catamarca', '010_Cademia',
@@ -158,9 +158,9 @@ const loud = b => { let n = 0; for (let i = 0; i < b.length; i += 8) if (Math.ab
 if (!loud(swapped.audio)) { console.error('FAIL: the substituted tune played silence'); process.exit(1); }
 const same = own.audio.length === swapped.audio.length && own.audio.equals(swapped.audio);
 if (same) { console.error(`FAIL: the title screen sounded the same with ${checksumName} installed as without it`); process.exit(1); }
-console.log(`ok: ${checksumName} installed as MIDI and changed the music — ${loud(own.audio)} non-silent checks of the game's own, ${loud(swapped.audio)} of the substitute`);
+console.log(`ok: ${checksumName} installed as MIDI and changed the music — ${loud(own.audio)} non-silent checks of the game's music, ${loud(swapped.audio)} of the substitute`);
 
-// --- and clearing puts the game's own music back
+// --- and clearing puts the game's music back
 swapped.w.cw_tune_clear();
 if (swapped.w.cw_tune_count() !== 0) { console.error('FAIL: clear left tunes installed'); process.exit(1); }
 console.log('ok: cleared');

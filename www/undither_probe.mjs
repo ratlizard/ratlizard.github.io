@@ -1,25 +1,25 @@
 // Does the Undither button's filter do what grimoire's does? Boots the real
 // page in headless Chrome, lets the game reach its start board, and puts one
 // frame through three things: the page's WebGL filter, the same filter with
-// the lock on the game's animated colours taken off, and grimoire's own
+// the lock on the game's animated colours taken off, and grimoire's
 // undither() from js/delv-graphics.js run on the CPU with the one stage the
 // GPU version leaves out, stray-colour repair, switched off. It fails if the filter changes nothing, if the GPU and grimoire
-// disagree by more than a rounding error, or if a pixel in an animated colour
-// is touched while the lock is on -- and it says whether the lock was put to
+// differ by more than a rounding error, or if a pixel in an animated colour
+// is touched while the lock is on -- and it reports whether the lock was put to
 // the test at all, which it is only if taking it off changes such a pixel.
 //
 // It needs Google Chrome, `www/cythera_web.wasm`, the game archive and
 // grimoire's checkout beside this repository (for js/delv-graphics.js); it
-// says which is missing and stops rather than passing. Chrome runs without a
+// reports which is missing and stops rather than passing. Chrome runs without a
 // GPU here, so WebGL is its software renderer: that is a check of the maths,
 // not of a phone's speed.
 //
 // Usage: node undither_probe.mjs [game.sit] [--dump <dir>] [--wait <seconds>]
 //   --dump writes raw.png and undithered.png, the frame before and after.
-//   --wait lets the game run that much longer first; the default, 25, takes
+//   --wait lets the game run that much longer first; the default, 25, captures
 //   the start board, whose dithered wood and plaques are what shows the
 //   brightness check working (grimoire's arithmetic darkens them by 7.56%).
-//   --wait 0 takes the title picture instead.
+//   --wait 0 captures the title picture instead.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -115,7 +115,7 @@ await click('#undither');
 const on = await run(`({ pressed: document.getElementById('undither').getAttribute('aria-pressed'),
   stored: localStorage.getItem('undither'), built: !!unditherGL })`);
 if (!on.built) fail('the filter is built', 'no WebGL pipeline: ' + (await run(`document.getElementById('log').textContent.slice(-300)`)));
-else if (on.pressed !== 'true' || on.stored !== '1') fail('the button turns it on and remembers', JSON.stringify(on));
+else if (on.pressed !== 'true' || on.stored !== '1') fail('the button turns it on and the setting is stored', JSON.stringify(on));
 else ok('the button turns it on, and the choice is remembered');
 if (!on.built) process.exit(1);
 
@@ -178,25 +178,25 @@ const r = await run(`(() => {
 
 if (r.noIndices) { fail('the module gives the palette indices', 'cw_render_indices answered null: the screen is not 8 bits deep, or not the page\'s size'); process.exit(1); }
 ok('the module gives the palette indices', `${r.W}x${r.H}`);
-if (!r.changed) fail('the filter changes the frame', 'not one pixel differs from the game\'s own');
+if (!r.changed) fail('the filter changes the frame', 'not one pixel differs from the unfiltered frame');
 else ok('the filter changes the frame', `${r.changed} of ${r.W * r.H} pixels (grimoire's changes ${r.refChanged})`);
 // Floats against doubles: near the detector's threshold a small difference in
-// a pixel's dither score moves its blend, and the supersample carries that a
+// a pixel's dither score moves its blend, and the supersample spreads that a
 // little further, so a few pixels in a frame land a few levels apart (35 of
 // 307,200 by more than 2, worst 5, on 26 September). The bound is on how many,
 // not on the worst one; and it is only worth having if leaving a whole stage
 // out would break it, which the control below measures on the same frame.
 const limit = Math.ceil(r.W * r.H * 0.0005);
 if (r.meanDiff > 0.25 || r.over2 > limit)
-  fail('the GPU agrees with grimoire', `mean ${r.meanDiff.toFixed(3)}, ${r.over2} pixels more than 2 apart (limit ${limit}), worst ${r.worst}`);
-else ok('the GPU agrees with grimoire', `mean |difference| ${r.meanDiff.toFixed(3)} of 255, ${r.over2} pixels more than 2 apart, worst ${r.worst}`);
+  fail('the GPU matches grimoire', `mean ${r.meanDiff.toFixed(3)}, ${r.over2} pixels more than 2 apart (limit ${limit}), worst ${r.worst}`);
+else ok('the GPU matches grimoire', `mean |difference| ${r.meanDiff.toFixed(3)} of 255, ${r.over2} pixels more than 2 apart, worst ${r.worst}`);
 if (r.stageOver2 <= limit * 4)
   fail('the agreement check can fail', `grimoire without its supersample is only ${r.stageOver2} pixels from itself with it`);
 else ok('the agreement check can fail', `grimoire without its supersample is ${r.stageOver2} pixels more than 2 away`);
-// Blending in light keeps a dithered area as bright as it looked; grimoire's
+// Blending in light leaves a dithered area as bright as it looked; grimoire's
 // arithmetic, the control, darkens it.
-if (Math.abs(r.litLoss) > 0.01) fail('blending in light keeps the brightness', `${(100 * r.litLoss).toFixed(2)}% over ${r.lightN} changed pixels`);
-else ok('blending in light keeps the brightness', `${(100 * r.litLoss).toFixed(2)}% over ${r.lightN} changed pixels, against ${(100 * r.storedLoss).toFixed(2)}% with grimoire's arithmetic`);
+if (Math.abs(r.litLoss) > 0.01) fail('blending in light preserves the brightness', `${(100 * r.litLoss).toFixed(2)}% over ${r.lightN} changed pixels`);
+else ok('blending in light preserves the brightness', `${(100 * r.litLoss).toFixed(2)}% over ${r.lightN} changed pixels, against ${(100 * r.storedLoss).toFixed(2)}% with grimoire's arithmetic`);
 if (r.storedLoss > -0.02) console.log(`  note the brightness check was not tested: grimoire's arithmetic loses only ${(100 * r.storedLoss).toFixed(2)}% here`);
 if (r.animTouched) fail('animated colours are left alone', `${r.animTouched} of ${r.animated} changed`);
 else ok('animated colours are left alone', `${r.animated} such pixels, none changed`);

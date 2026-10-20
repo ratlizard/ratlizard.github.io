@@ -14,14 +14,14 @@ const w = instance.exports; mem = w.memory; w.cw_init();
 const alloc = u8 => { const p = w.cw_alloc(u8.length); new Uint8Array(mem.buffer, p, u8.length).set(u8); return p; };
 const game = readFileSync(archivePath);
 // PPC=1 launches Cythera's PowerPC slice, as SYSTEMLESS_PREFER_POWERPC=1 does
-// for the desktop runner. Said before cw_load, which is where the executable
+// for the desktop runner. Set before cw_load, which is where the executable
 // is chosen.
 if (process.env.PPC === '1') w.cw_prefer_powerpc(1);
-// SIZE=WxH asks for a guest screen other than 800x600 -- the page asks for a
+// SIZE=WxH requests a guest screen other than 800x600 -- the page requests a
 // tall one in portrait on a phone, which 800x600 never exercises.
 const [SW, SH] = (process.env.SIZE || '800x600').split('x').map(Number);
 if (w.cw_load(alloc(game), game.length, Math.floor(Date.now()/1000) + 2082844800, SW, SH) !== 0) process.exit(1);
-// Import every desktop-store folder under the save dir (each holds
+// Import every desktop-store folder under the save dir (each has
 // metadata.json and the two forks), so the disk looks as it did to the game.
 import { readdirSync, statSync, existsSync } from 'node:fs';
 function importTree(dir) {
@@ -38,7 +38,7 @@ function importTree(dir) {
 if (saveDir !== '-') importTree(saveDir);
 // A Magpie patch, merged into Cythera Data before the game starts, exactly as
 // index.html does it: read the archive back out of the disk, merge in
-// JavaScript, hand it to cw_import. CW_PATCH names the patch file itself (the
+// JavaScript, hand it to cw_import. CW_PATCH is the path of the patch file itself (the
 // bare Delver Archive, not a .sit). This is how a patched run is reproduced
 // without a browser.
 if (process.env.CW_PATCH) {

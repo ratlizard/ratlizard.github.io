@@ -4,12 +4,12 @@
 // the rest, which only a browser has: the worker starting and importing its
 // scripts, the instruments fetched from archive.org and kept in IndexedDB,
 // each tune installed while the game runs, and a second visit that fetches
-// nothing and has the theme before the title screen asks for it. Then the
+// nothing and has the theme before the title screen requests it. Then the
 // Music panel's checkbox off, which has to leave no render installed.
 //
 // It fetches 7 MB from archive.org, so it is run by hand after touching the
 // music path and is not one of the quick checks. It needs Google Chrome,
-// `www/cythera_web.wasm` and a game archive, and says so and stops rather
+// `www/cythera_web.wasm` and a game archive, and reports it and stops rather
 // than passing when one is missing. The plumbing is layout_probe.mjs's.
 //
 // Usage: node qt_music_probe.mjs [game.sit]
@@ -75,7 +75,7 @@ const run = async expr => {
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
   return r.result.value;
 };
-// A real mouse event, not element.click(): the page's own handlers are what is
+// A real mouse event, not element.click(): the page's handlers are what is
 // being measured, and Play makes its AudioContext inside the tap.
 // On a phone the bar is a row that scrolls, so a control is brought into view
 // first, as a thumb would, and clear of the arrows over its ends.
@@ -155,7 +155,7 @@ try {
   await sleep(500);
   const rows = await table(), left = await run(`wasm.cw_tune_count()`);
   rows.some(t => t.includes('QuickTime')) || left ? fail('the checkbox off', `${left} tune(s) still installed: ${rows.join(' | ')}`)
-    : ok('the checkbox off', 'no tune installed, every row the game\'s own');
+    : ok('the checkbox off', 'no tune installed, every row the game\'s tune');
   await run(`(() => { const c = document.getElementById('qtmusic'); c.checked = true; return c.onchange({ target: c }); })()`);
   await waitFor(async () => (await run(`qt.installed.size`)) === 11, 'the tunes to come back', 120000, 500);
   ok('the checkbox on again', '11 tunes installed');

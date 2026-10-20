@@ -1,4 +1,4 @@
-// A save or a patch sent to a phone arrives as a zip. This runs the page's own
+// A save or a patch sent to a phone comes as a zip. This runs the page's
 // zip reader, save import and patch unwrapping -- lifted out of index.html,
 // beside the vendored grimoire scripts as the page loads them -- over:
 //
@@ -7,7 +7,7 @@
 //   - a character zipped as the Finder's Compress zips one (`ditto -c -k
 //     --sequesterRsrc`), made here from the save store's I.M.Cheater;
 //   - the same file zipped by Info-ZIP, which drops the resource fork and the
-//     Finder type, and must be refused by name rather than imported half;
+//     Finder type, and must be rejected by name rather than imported half;
 //   - the .bin the Saves panel exports, zipped;
 //   - the Pumpkin Patch's .hqx, zipped.
 //
@@ -101,10 +101,10 @@ else {
     execFileSync('zip', ['-q', '-X', '-j', join(tmp, 'plain.zip'), file]);
     let msg = '';
     try { await savesFromFile(asFile('plain.zip', read(join(tmp, 'plain.zip')))); } catch (e) { msg = e.message; }
-    if (!/lost its resource fork/.test(msg)) fail('plain zip', msg ? 'refused, but not saying why: ' + msg : 'it was imported without its resource fork');
-    else ok('a zip that dropped the resource fork is refused, and says so', msg);
+    if (!/lost its resource fork/.test(msg)) fail('plain zip', msg ? 'rejected, but with no reason given: ' + msg : 'it was imported without its resource fork');
+    else ok('a zip that dropped the resource fork is rejected, with the reason', msg);
 
-    // The Saves panel's own export, zipped.
+    // The Saves panel's export, zipped.
     const bin = toMacBinary({ path: 'x/I.M.Cheater', type: 0x44656C50, creator: 0x44656C76, flags: 0x0100, created: 1, modified: 2, data, rsrc });
     writeFileSync(join(tmp, 'I.M.Cheater.bin'), bin);
     execFileSync('zip', ['-q', '-X', '-j', join(tmp, 'bin.zip'), join(tmp, 'I.M.Cheater.bin')]);
@@ -122,12 +122,12 @@ else {
       fail('mixed zip', JSON.stringify({ took: mixed.recs.map(r => r.name), left: mixed.left }));
     else ok('a file in the zip that is not the game\'s is left out by name', mixed.left[0]);
 
-    // The reader holds every entry to its CRC: flip a byte of stored data.
+    // The reader checks every entry against its CRC: flip a byte of stored data.
     execFileSync('zip', ['-q', '-X', '-0', '-j', join(tmp, 'stored.zip'), join(tmp, 'I.M.Cheater.bin')]);
     const bad = read(join(tmp, 'stored.zip')); bad[30 + 'I.M.Cheater.bin'.length + 200] ^= 1;
     msg = '';
     try { await savesFromFile(asFile('bad.zip', bad)); } catch (e) { msg = e.message; }
-    if (!/checksum/.test(msg)) fail('corrupt zip', msg ? 'refused for the wrong reason: ' + msg : 'a corrupted entry was imported');
+    if (!/checksum/.test(msg)) fail('corrupt zip', msg ? 'rejected for the wrong reason: ' + msg : 'a corrupted entry was imported');
     else ok('a corrupted entry fails its checksum', msg);
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 }
@@ -150,12 +150,12 @@ else {
       execFileSync('zip', ['-q', '-X', '-j', join(tmp, 'none.zip'), join(tmp, 'ReadMe.txt')]);
       try { await unwrapPatchFile('none.zip', read(join(tmp, 'none.zip'))); } catch (e) { msg = e.message; }
       if (!/Nothing in none.zip is a Delver Archive.*ReadMe.txt/.test(msg)) fail('a zip with no patch', msg || 'it was accepted');
-      else ok('a zip with no patch in it is refused, naming what it holds', msg);
+      else ok('a zip with no patch in it is rejected, with its contents named', msg);
     } catch (e) { fail('zipped patch', e.message); }
     finally { rmSync(tmp, { recursive: true, force: true }); }
   }
 }
 
-if (said.length) console.log('  page said: ' + said.join(' / '));
+if (said.length) console.log('  page printed: ' + said.join(' / '));
 console.log(failures ? `${failures} failure(s)` : `all passed${skips ? `, ${skips} skipped` : ''}`);
 process.exit(failures ? 1 : 0);

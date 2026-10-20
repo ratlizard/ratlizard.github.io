@@ -1,7 +1,7 @@
-/* qt-music.js -- the game's own tunes, played through QuickTime 3's
+/* qt-music.js -- the game's tunes, played through QuickTime 3's
    instruments.
 
-   A tune in Cythera Data holds notes and the instrument each part asks for,
+   A tune in Cythera Data has notes and the instrument each part names,
    never a sound: QuickTime played it through QuickTime Musical Instruments,
    a set of Roland samples in an extension beside it. The fork synthesises a
    tune itself with a plain harmonic series, which plays the right notes and
@@ -14,11 +14,11 @@
 
    The instruments are Roland's and Apple's and are not in this repository.
    The page fetches them from archive.org's copy of the QuickTime 3 CD, as
-   grimoire does, and keeps the two megabytes it needs.
+   grimoire does, and stores the two megabytes it needs.
 
    Loaded three ways: by the page as a classic script, for the checksum; as
    a worker, by the page, to render off the thread the game runs on (a tune
-   takes a second or two on a desktop and several on a phone); and by
+   needs a second or two on a desktop and several on a phone); and by
    qt_music_smoke.mjs under Node. */
 
 /* The checksum the fork files a substitute under (its tune_stream_checksum):
@@ -45,10 +45,10 @@ function qtTuneStreamChecksum(data) {
   return acc;
 }
 
-/* What the fork's mixer takes without converting: its Sound Manager channel
-   carries unsigned 8-bit samples at 22,050 Hz, and a 16-bit recording is
-   reduced to that as it is installed. Rendering to it directly keeps what the
-   module holds to 44 KB a second of music. */
+/* What the fork's mixer accepts without converting: its Sound Manager channel
+   plays unsigned 8-bit samples at 22,050 Hz, and a 16-bit recording is
+   reduced to that as it is installed. Rendering to it directly limits what the
+   module stores to 44 KB a second of music. */
 const QT_OUT_RATE = 22050;
 /* The fork plays a recording to its end before it starts the tune's next
    turn, where QuickTime started the next on time and let the last notes ring
@@ -79,7 +79,7 @@ function qtTuneWav(data, lib) {
   return { wav, seconds: n / QT_OUT_RATE, missing: r.missing };
 }
 
-/* The worker. It is given the instruments once, as whatever file holds them
+/* The worker. It is given the instruments once, as whatever file contains them
    (QUICKTIM.EXE, the .qtx, or the resource fork the page kept from an earlier
    visit), and then one tune at a time. */
 if (typeof importScripts === 'function' && typeof document === 'undefined') {

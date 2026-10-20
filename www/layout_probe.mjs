@@ -3,14 +3,14 @@
 // checks that nothing is off the screen.
 //
 // This exists because the layout faults this page has had were all of one
-// shape: a number guessed at instead of measured. The canvas subtracted a
+// shape: a number assumed instead of measured. The canvas subtracted a
 // nominal 40 px bar and the bar was 76; the panels hung off a nominal 48 px
 // bar and it was 78 while the module was still loading; `width` and
 // `max-height` were the content box and the padding put 399 px of panel on a
 // 393 px screen. None of them are visible in the source and all of them are
 // one measurement away.
 //
-// It needs Google Chrome and `www/cythera_web.wasm`; it says so and stops
+// It needs Google Chrome and `www/cythera_web.wasm`; it reports it and stops
 // rather than passing when either is missing, because the one outcome worth
 // designing against here is silence that reads as a pass.
 //
@@ -86,7 +86,7 @@ const run = async expr => {
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
   return r.result.value;
 };
-// A real mouse event, not element.click(): the page's own handlers are what is
+// A real mouse event, not element.click(): the page's handlers are what is
 // being measured, and Play makes its AudioContext inside the tap.
 // On a phone the bar is a row that scrolls, so a control is brought into view
 // first, as a thumb would, and clear of the arrows over its ends.

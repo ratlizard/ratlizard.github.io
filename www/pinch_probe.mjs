@@ -7,15 +7,15 @@
 //   - a pinch zooms the screen and presses nothing;
 //   - the finger left on the glass after a pinch neither presses nor clicks;
 //   - a tap on the zoomed screen presses the guest pixel under it, worked out
-//     here from the transform independently of the page's own guestPoint;
+//     here from the transform independently of the page's guestPoint;
 //   - a finger that moves at once presses at once, where it landed;
 //   - pinching back out returns the screen to fitting the stage.
 //
-// The negative control is a second finger that arrives after the page has
+// The negative control is a second finger that comes down after the page has
 // stopped waiting for one: that must reach the module as a press and a
 // release, which shows the count sees presses at all.
 //
-// It needs Google Chrome, `www/cythera_web.wasm` and the game archive, and says
+// It needs Google Chrome, `www/cythera_web.wasm` and the game archive, and reports
 // which is missing and stops rather than passing.
 //
 // Usage: node pinch_probe.mjs [game.sit]
@@ -101,7 +101,7 @@ await sleep(15000);
 // Every press and release that reaches the module, with where it went. A
 // plain copy of the exports rather than a Proxy: their properties are
 // read-only and non-configurable, a Proxy may not answer them with anything
-// else, and the page's own calls then throw -- which this probe's control
+// else, and the page's calls then throw -- which this probe's control
 // caught the first time round.
 await run(`window.__io = []; { const real = wasm; wasm = { ...real,
   cw_mouse_down: (...a) => { __io.push(['down', ...a]); return real.cw_mouse_down(...a); },
