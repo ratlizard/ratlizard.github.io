@@ -1,49 +1,42 @@
 /* delv-archive.js -- the Cythera archive itself: its master index, its
- * resources, the encryption laid over them, and the record formats stored
- * inside.
- *
- * This file, delv-graphics.js and delv-script.js were the Delver-specific half
- * of index.html's inline script, which had reached 9,800 lines.
- * They came out because at that size the code that decodes a 1999 game and the
- * code that draws a web page had become indistinguishable, and because the two
- * delvmod cross-checks -- the only things here that can tell a wrong decoder
- * from a right one -- had nothing to point at but "the page".
- *
- * THE ARCHIVE IS AN ARGUMENT. openDelverArchive(bytes) returns the open
- * archive as an object -- its bytes, its master index bounds-checked, and
- * `derived`, the tables built from it -- and every function in this tier
- * that reads the archive takes that object as its first argument:
- * getResourceBytes(arc, resid), decodeResource(arc, ...), dvmRender(arc, ...).
- * Until 18 September 2026 the two were `fileBytes` and `masterIndexGlobal`,
- * top-level variables of this file that getResourceBytes read as ambient
- * globals, and the tables memoised in this tier were module-level Maps that
- * resetDerivedCaches() in the page had to know about by name; ten of them
- * were missed at once on 16 September. A table keyed to an archive now lives
- * on that archive (derivedTable below) and goes when it does, and two
- * archives can be open at the same time, which the page could not do
- * before. The page's own open file is `ARCHIVE` in js/page-archive.js.
- *
- * CLASSIC SCRIPT, deliberately -- no `type="module"`, no import, no export.
- * A module is fetched with CORS, and a page opened from file:// has an opaque
- * origin, so a module would not load at all when the page is double-clicked
- * rather than served. utilities/page_scripts.mjs throws if it finds one.
- *
- * LOAD ORDER: after js/mac-bytes.js, whose u16be/u32be/decodeMacRoman this
- * uses, after js/mac-containers.js and js/mac-vise.js (extractDelverArchive
- * unwraps a container or an installer), and before delv-graphics.js and
- * delv-script.js.
- *
- * The encryption lists near the bottom are delvmod's, not this project's, and
- * utilities/delv_crosscheck.mjs re-reads them out of delvmod's Python on every
- * run. The comment above smartDecrypt says what guessing them cost.
+ * resources, the encryption laid over them, and the record formats stored *
+ inside. * * This file, delv-graphics.js and delv-script.js were the
+ Delver-specific half * of index.html's inline script, which had reached 9,800
+ lines. * They came out because at that size the code that decodes a 1999 game
+ and the * code that draws a web page had become indistinguishable, and because
+ the two * delvmod cross-checks -- the only things here that can distinguish a
+ wrong decoder * from a right one -- had nothing to point at but "the page". *
+ * THE ARCHIVE IS AN ARGUMENT. openDelverArchive(bytes) returns the open *
+ archive as an object -- its bytes, its master index bounds-checked, and *
+ `derived`, the tables built from it -- and every function in this tier * that
+ reads the archive is given that object as its first argument: *
+ getResourceBytes(arc, resid), decodeResource(arc, ...), dvmRender(arc, ...). *
+ Until 18 September 2026 the two were `fileBytes` and `masterIndexGlobal`, *
+ top-level variables of this file that getResourceBytes read as ambient *
+ globals, and the tables memoised in this tier were module-level Maps that *
+ resetDerivedCaches() in the page had to list by name; ten of them * were
+ missed at once on 16 September. A table keyed to an archive now lives * on
+ that archive (derivedTable below) and goes when it does, and two * archives
+ can be open at the same time, which the page could not do * before. The page's
+ open file is `ARCHIVE` in js/page-archive.js. * * CLASSIC SCRIPT, deliberately
+ -- no `type="module"`, no import, no export. * A module is fetched with CORS,
+ and a page opened from file:// has an opaque * origin, so a module would not
+ load at all when the page is double-clicked * rather than served.
+ utilities/page_scripts.mjs throws if it finds one. * * LOAD ORDER: after
+ js/mac-bytes.js, whose u16be/u32be/decodeMacRoman this * uses, after
+ js/mac-containers.js and js/mac-vise.js (extractDelverArchive * unwraps a
+ container or an installer), and before delv-graphics.js and * delv-script.js.
+ * * The encryption lists near the bottom are delvmod's, not this project's,
+ and * utilities/delv_crosscheck.mjs re-reads them out of delvmod's Python on
+ every * run. The comment above smartDecrypt records what inferring them cost.
  */
 
 /* The open archive. `bytes` is the whole data fork; `index` has 256 slots
-   whatever the header says, so a subindex number is always its own index
+   whatever the header declares, so a subindex number is always the same index
    here, and every entry is either [0, 0] or a whole number of 8-byte records
    inside the file -- getResourceBytes, buildXrefIndex, buildScriptTextIndex
    all see 34 real subindexes and nothing that could point outside the bytes.
-   `derived` holds the tables this tier and the page build from the archive,
+   `derived` has the tables this tier and the page build from the archive,
    under derivedTable(); they belong to these bytes and to no others, which
    is why they are kept here rather than in a variable somewhere. Null when
    the (offset, length) pair at 0x80 does not describe a master index. */
@@ -87,9 +80,9 @@ function parseDelverStringTable(p) {
   return out;
 }
 // A cursor over the archive. The readers themselves live in js/mac-bytes.js,
-// so this only keeps the position: `pstring` decodes Mac Roman rather than
-// Latin-1, which is what the archive's title actually is -- the two agree on
-// ASCII and disagree on every accented character.
+// so this only tracks the position: `pstring` decodes Mac Roman rather than
+// Latin-1, which is what the archive's title actually is -- the two match on
+// ASCII and differ on every accented character.
 class BinReader {
   constructor(bytes) { this.data = bytes; this.pos = 0; }
   seek(p) { this.pos = p; }
@@ -119,8 +112,8 @@ function getResourceBytes(arc, resid) {
   return bytes.slice(roff, roff+rlen);
 }
 
-// How many entries a subindex actually declares. The builders below used to
-// ask for all 256 ids in every populated subindex -- 8,704 lookups where 1,600
+// How many entries a subindex actually declares. The builders below once
+// requested all 256 ids in every populated subindex -- 8,704 lookups where 1,600
 // exist -- because the count was never consulted.
 function subindexCount(arc, subn) {
   const mi = arc && arc.index[subn];
@@ -136,24 +129,24 @@ function parseCompositionWord(t) {
 
 // BinHex 4.0, MacBinary and AppleSingle/AppleDouble are decoded by
 // js/mac-containers.js. The retired resource fork browser page loaded it as
-// well: both pages had their own copy, and each had fixed a bug the other still had.
+// well: each page had a copy, and each had fixed a bug the other still had.
 
 // Where the master index is, and how long it is, per delvmod's
 // archive.load_header/load_index: an (offset,length) pair at 0x80, and the
 // index entries start 8 bytes into it -- the first pair describes the index
-// itself. Cythera Data says 0x80/0x800, so the entries run 0x88..0x87F and
+// itself. Cythera Data has 0x80/0x800, so the entries run 0x88..0x87F and
 // there are length/8 - 1 = 255 of them.
 //
-// This used to be hardcoded as "256 pairs at 0x88", which invented a subindex
+// This was once hardcoded as "256 pairs at 0x88", which invented a subindex
 // 255: that entry sits at 0x880, one slot PAST the end of the index, so the
-// reader was taking the first subindex's own data as an index entry and
+// reader was taking the first subindex's data as an index entry and
 // getting off=0xA07F5000 len=0xFFFF0000. It was bounds-checked away rather
 // than explained. There is no subindex 255 -- those bytes were never anything
 // but what follows the index.
 function delverMasterIndexExtent(bytes) {
   if (!bytes || bytes.length < 0x88) return null;
   const off = u32be(bytes, 0x80), len = u32be(bytes, 0x84);
-  // 16 bytes is the smallest index that could hold one entry after its own
+  // 16 bytes is the smallest index that could hold one entry after the
   // self-describing pair, and the whole thing has to be inside the file.
   if (off < 0x80 || len < 16 || len % 8 !== 0 || off + len > bytes.length) return null;
   // Nothing past the index can be a subindex, so this is also the floor every
@@ -166,24 +159,25 @@ function delverMasterIndexExtent(bytes) {
 // a master index whose every entry is either empty or a whole number of
 // 8-byte records inside the file, and inside every subindex it names, resource
 // entries that are likewise either empty or inside the file. That is the
-// shape delvmod's load_header/load_index walks, and it is what tells a data
-// fork from a resource fork, from BinHex ASCII, from an unrelated file.
+// shape delvmod's load_header/load_index walks, and it is what distinguishes a
+// data fork from a resource fork, from BinHex ASCII, from an unrelated file.
 //
 // It used to demand eight populated subindexes as well, which was a count
 // standing in for a check. The shipped Cythera Data has 34, so eight looked
 // safe; a Cythera SAVED GAME has six (the party's records, its combat-AI
 // scripts, the prop list of the zone the player stands in, one portrait, and
-// two subindexes the scenario never has), and a patch file -- Magpie's Pumpkin Patch, twelve
-// tile sheets -- has two. Every one of them was refused, so the page could
-// not open a player file at all: utilities/addons_check.mjs opens all seven
-// third-party archives in the community's add-ons, and all seven were on its
-// refused list. The rule above accepts all seven and the shipped archive, and refuses
-// every other file in the same corpus: the application's PEF data fork, both
-// resource forks, the BinHex texts, the installers, JPEGs, an .rtf, a TEXT
-// file. What made the eight seem necessary was that the entries were only
-// COUNTED: a stray value that happened to pass was tolerated, so the count
-// had to be high enough that stray values could not reach it. Requiring that
-// no entry be stray is the stronger test and needs no threshold.
+// two subindexes the scenario never has), and a patch file -- Magpie's Pumpkin
+// Patch, twelve tile sheets -- has two. Every one of them was rejected, so the
+// page could not open a player file at all: utilities/addons_check.mjs opens
+// all seven third-party archives in the community's add-ons, and all seven
+// were on its rejected list. The rule above accepts all seven and the shipped
+// archive, and rejects every other file in the same corpus: the application's
+// PEF data fork, both resource forks, the BinHex texts, the installers, JPEGs,
+// an .rtf, a TEXT file. What made the eight seem necessary was that the
+// entries were only COUNTED: a stray value that happened to pass was
+// tolerated, so the count had to be high enough that stray values could not
+// reach it. Requiring that no entry be stray is the stronger test and needs no
+// threshold.
 //
 // The player name is the pstring at 0x20 -- delvmod's `player_name`, empty in
 // the scenario file -- so a caller can say what it opened.
@@ -235,8 +229,8 @@ function describeDelverArchive(bytes) {
    24 September 2026 the first entry that read as one won and the rest were
    unreachable: the Rocky the Flying Chicken add-on is a zip with two saves
    in it, and the second could only be opened by unpacking the zip. Now
-   `opts.pick` names an entry (its name, or its path in a zip) and the first
-   is the default, and what comes back lists every one under `container`
+   `opts.pick` picks an entry (its name, or its path in a zip) and the first
+   is the default, and what comes back has every one under `container`
    when there is more than one, so the page can offer the others by name
    without reading the file again (switchContained). A pick that names
    nothing in the file falls back to the first, as an installer pick does. */
@@ -263,7 +257,7 @@ function extractDelverArchive(bytes, opts) {
   // The whole game at once: Cythera's installer is an Installer VISE
   // archive (js/mac-vise.js) holding the archive, the application, the
   // Combat AI scripts and the documentation, each with both forks. The
-  // archive is the one file of type 'DelS' in it. What comes back carries
+  // archive is the one file of type 'DelS' in it. What comes back includes
   // the installer too, so the page can keep the other files.
   const installer = sniffViseInstaller(bytes, opts.pick);
   if (installer) {
@@ -289,18 +283,19 @@ function extractDelverArchive(bytes, opts) {
      community add-on is actually distributed. This runs AFTER the installer
      sniff on purpose: `sniffViseInstaller` also looks inside StuffIt, and an
      installer stored in one must keep going down the installer path, which
-     knows about CRCs and about picking between several installers.
+     handles CRCs and picking between several installers.
 
      Since method 13 became readable this is no longer a rare case -- the one
      Magpie patch that exists is a method-13 fork inside
      `614_MagpiePumpkinPatch.sit.hqx`, and before this the page could list
      that archive and not open what was in it.
 
-     The first entry whose data fork reads as a Delver archive wins, and a
+     The first entry whose data fork reads as a Delver archive is used, and a
      fork that will not decompress is stepped over rather than thrown on, so
      one Arsenic-compressed file in an archive does not hide a readable one
-     beside it. What comes back names the entry, because a .sit usually holds
-     several files and "which one did it open" is the first question. */
+     beside it. What comes back has the entry's name, because a .sit usually
+     contains several files and "which one did it open" is the first question.
+     */
   const fromStuffIt = (buf, wrapper) => {
     if (typeof looksLikeStuffIt !== 'function' || !looksLikeStuffIt(buf)) return null;
     let arc = null;
@@ -323,13 +318,13 @@ function extractDelverArchive(bytes, opts) {
   if (bare) return bare;
 
   /* A zip with a Delver archive inside it: one of the add-ons is one, and a
-     saved game shared now arrives as one, since the Finder's Compress and the
+     saved game shared now comes as one, since the Finder's Compress and the
      Files app's both make a zip. Read the same way as a StuffIt archive -- the
-     first entry whose data fork is a Delver archive wins, a fork that will not
-     read is stepped over -- and the resource fork and Finder type come from
-     the AppleDouble a Mac zips beside the file (js/mac-zip.js). Guarded, like
-     the StuffIt path, because the browser player vendors this file without
-     that one. */
+     first entry whose data fork is a Delver archive is used, a fork that will
+     not read is stepped over -- and the resource fork and Finder type come
+     from the AppleDouble a Mac zips beside the file (js/mac-zip.js). Guarded,
+     like the StuffIt path, because the browser player vendors this file
+     without that one. */
   const fromZip = (buf) => {
     if (typeof looksLikeZip !== 'function' || !looksLikeZip(buf)) return null;
     let arc = null;
@@ -354,10 +349,10 @@ function extractDelverArchive(bytes, opts) {
 
   /* A StuffIt X archive (js/mac-stuffitx.js, since 13 October 2026): three
      of the community's saved games come as one. Read as a StuffIt archive
-     is -- the first entry whose data fork is a Delver archive wins, a fork
+     is -- the first entry whose data fork is a Delver archive is used, a fork
      that will not decompress is stepped over and named -- and guarded the
      same way, since the browser player vendors this file without that one,
-     and there the refusal below still names the format. */
+     and there the error below still gives the format. */
   const UNPACK_IT = ', which this page does not open. Unpack it with The Unarchiver or StuffIt Expander and open the file inside.';
   const isStuffItX = buf => typeof looksLikeStuffItX === 'function' && looksLikeStuffItX(buf);
   const fromStuffItX = (buf, wrapper) => {
@@ -412,7 +407,7 @@ function extractDelverArchive(bytes, opts) {
   const cpt = fromCompactPro(bytes, '');
   if (cpt) return cpt;
 
-  // sniffMacContainer knows the order these have to be tried in, and why.
+  // sniffMacContainer has the order these have to be tried in, and why.
   const forks = sniffMacContainer(bytes);
   const kind = forks ? forks.kind : '';
 
@@ -427,7 +422,7 @@ function extractDelverArchive(bytes, opts) {
     /* A StuffIt archive inside the wrapper, which is what a community add-on
        downloaded as a .hqx actually is: BinHex around a .sit around the file.
        Tried after the forks themselves, so a wrapper holding the archive
-       outright still takes the shorter path. */
+       outright still goes the shorter way. */
     for (const which of ['data', 'rsrc']) {
       const buf = forks[which];
       if (!buf || !buf.length) continue;
@@ -437,10 +432,10 @@ function extractDelverArchive(bytes, opts) {
     const t = (forks.type || '').trim(), c = (forks.creator || '').trim();
     const holding = 'That is a ' + kind + ' file' + (forks.name ? ' holding "' + forks.name + '"' : '');
     if (isStuffItX(forks.data) && typeof parseStuffItXArchive !== 'function') throw new Error(holding + ', a StuffIt X archive' + UNPACK_IT);
-    // An application is only the Cythera application when its creator says
-    // so. 'EXTR' is Compact Pro's self-extractor, which is what the one .sea
-    // among the add-ons is: read, when mac-compactpro.js is here, and found
-    // to hold neither Cythera Data nor a saved game.
+    // An application is only the Cythera application when its creator code
+    // marks it. 'EXTR' is Compact Pro's self-extractor, which is what the one
+    // .sea among the add-ons is: read, when mac-compactpro.js is here, and
+    // found to hold neither Cythera Data nor a saved game.
     if (t === 'APPL' && c === 'EXTR') {
       if (isCompactPro(forks.data)) throw new Error(holding + ', a Compact Pro self-extracting archive with no Cythera Data or saved game in it. [' + notes.join('; ') + ']');
       throw new Error(holding + ', a Compact Pro self-extracting archive' + UNPACK_IT);
@@ -541,7 +536,7 @@ function parseDelverTextArray(data) {
 // the wiki's Cythera Map page field for field -- including the four cardinal
 // exit ports, which that page does document by name and in order (North,
 // East, South, West; uint16 each) at exactly these offsets. This parser
-// agrees with the wiki here rather than adding anything to it.
+// matches the wiki here rather than adding anything to it.
 function parseDelverMap(data) {
   if (data.length < 32) return null;
   const width = u16be(data, 0), height = u16be(data, 2), unknown = u16be(data, 4);
@@ -549,12 +544,12 @@ function parseDelverMap(data) {
   const hEdge = data[10], vEdge = data[11];
   const exitN = u16be(data, 12), exitE = u16be(data, 14), exitS = u16be(data, 16), exitW = u16be(data, 18);
   // Sanity bounds -- reject anything that isn't a plausible Map header.
-  // The format's own ceiling is 4096x4096 (prop coordinates are 12-bit), per
-  // the wiki, so that is the limit enforced here. Cythera's own maps are far
+  // The format's ceiling is 4096x4096 (prop coordinates are 12-bit), per
+  // the wiki, so that is the limit enforced here. Cythera's maps are far
   // smaller -- the largest is 64x64 -- but a hand-edited or fan-made archive
   // is entitled to the full range, and the old 320-per-axis guard would have
   // rejected it outright while the comment claimed 1024. A total-tile cap
-  // still applies so a bad decrypt guess cannot trigger a runaway allocation.
+  // still applies so a wrong decrypt choice cannot trigger a runaway allocation.
   if (width === 0 || height === 0 || width > 4096 || height > 4096) return null;
   if (width * height > 4194304) return null;
   // 12 bytes padding at offset 20-31, then roof data, then map_data
@@ -564,7 +559,7 @@ function parseDelverMap(data) {
   const mapEnd = mapStart + width*height*2;
   // The header must actually be followed by enough bytes to hold the
   // declared map_data grid -- otherwise this almost certainly is not a
-  // real Map resource (e.g. wrong subindex, or auto-decrypt guessed wrong).
+  // real Map resource (e.g. wrong subindex, or auto-decrypt chose wrong).
   if (mapStart < 0 || mapEnd > data.length + 4) return null;
   return {
     width, height, unknown, roofLayerSize, roofUnderlayerSize,
@@ -579,7 +574,7 @@ function parseDelverMap(data) {
 // --- PropList (subindex 128 / 0x81xx) 16-byte record parser --------------
 // Ported from delv/level.py PropList.load_from_bfile(), with one correction.
 //
-// delvmod names the uint16 at +8/+9 `propref` and the uint32 at +10..13
+// delvmod calls the uint16 at +8/+9 `propref` and the uint32 at +10..13
 // `storeref`. That is backwards. The wiki's subindex 128 page has StoreRef as
 // the 2 bytes at +8/+9, and it has evidence: those 2 bytes match the symbol
 // keys in 0xF015 exactly. Checked against this archive -- in prop list 0x8102
@@ -588,10 +583,10 @@ function parseDelverMap(data) {
 // F015 has {0x0006, "Od_Bellows1"}. Reading a uint32 at +10 straddled the
 // boundary and picked up nothing meaningful.
 //
-// The wiki's field table also lists an "Other Prop reference, uint32?" which
+// The wiki's field table also has an "Other Prop reference, uint32?" which
 // would occupy +8..+11 and therefore overlap StoreRef. It is zero in every
 // record in the scenario file -- prop-to-prop references are made at runtime
-// -- so there is nothing here to tell the two readings apart. Both are
+// -- so there is nothing here to distinguish the two readings. Both are
 // reported below, with the 6 bytes after StoreRef kept as raw tail.
 function parseDelverPropList(data) {
   const records = [];
@@ -603,7 +598,7 @@ function parseDelverPropList(data) {
     const x = raw >> 12, y = raw & 0x0FFF;
     // ...except when the prop is not on the floor at all. delvmod's level.py
     // (textual_location / inside_something) and the wiki's subindex 128 page
-    // agree that the location word doubles as a containment link: flags & 0x10
+    // both read the location word as a containment link too: flags & 0x10
     // means a character is holding it and the low 16 bits are that character's
     // number, flags & 0x08 means it is inside another prop in this same list at
     // index (low16 - 0x100), and both bits together mean the character has it
@@ -611,7 +606,7 @@ function parseDelverPropList(data) {
     // contained prop in the shipped archive was being placed at coordinates
     // that mean nothing: 985 of the 14,485 records -- 866 inside another prop,
     // 119 carried by a character, 32 of those equipped -- plus 5 deleted
-    // records, which carry the same bits and are excluded here. 0x01 is
+    // records, which have the same bits and are excluded here. 0x01 is
     // "okay to take".
     const carried = !!(flags & 0x10), inside = !!(flags & 0x08);
     const holder = raw & 0xFFFF;
@@ -640,7 +635,7 @@ function parseDelverPropList(data) {
 // --- Schedule List (resource 0xF00B) parser -------------------------------
 // Ported from delv/schedule.py ScheduleList. 0x100 uint16 lengths, one per
 // possible character, followed by that many EIGHT-byte entries each, packed
-// in order. Eight is what the wiki's Schedules page says and what the loop
+// in order. Eight is what the wiki's Schedules page gives and what the loop
 // below has always read -- the old "7-byte" comment was the thing that was
 // wrong, not the code.
 //   hour u8 | flags u8 (ends up as character field 0x15) | script u16
@@ -671,7 +666,7 @@ function parseDelverScheduleList(data) {
 
 function decryptResource(data, resid) {
   // Delver Archive resource cipher, taken verbatim from the reference
-  // delv.archive.decrypt() implementation. The resource's own ID is used
+  // delv.archive.decrypt() implementation. The resource's ID is used
   // as the "prokey" seed for a rolling multiplicative PRNG whose low byte
   // is XORed against each byte of ciphertext.
   const out = new Uint8Array(data.length);
@@ -701,10 +696,10 @@ function byteEntropy(data) {
 /* What shape is this payload?
  * ---------------------------------------------------------------------------
  * These are the clear side of the encrypted-or-not question, and the reason
- * they exist is a measurement. The fallback below used to decide anything the
+ * they exist is a measurement. The fallback below once settled anything the
  * tables and the two script tests did not cover on byte statistics, and
  * utilities/addons_check.mjs scored that at 63.3% against the tables. The
- * breakdown said the errors were one-sided: 554 of 572 were CLEAR resources
+ * breakdown showed the errors were one-sided: 554 of 572 were CLEAR resources
  * being decrypted, and only 18 were encrypted resources left as they were.
  *
  * The cause is arithmetic, not weakness. The cipher is an XOR keystream, so
@@ -713,10 +708,10 @@ function byteEntropy(data) {
  * is mostly bytes above 0x80 and scores a printable ratio near 0.1; an `asnd`
  * body is signed samples. So on the old score -- printable ratio minus
  * entropy over 32 -- noise BEAT every graphic, sound and table in the
- * archive. It was not deciding badly; it was biased towards "decrypt" by
+ * archive. It was not settling cases badly; it was biased towards "decrypt" by
  * construction, which is why it scored below a coin flip.
  *
- * So each test below asks whether the bytes are a payload the archive is
+ * So each test below tests whether the bytes are a payload the archive is
  * known to hold, and every one of them is derived from a format the rest of
  * this project already reads: the DCG stream decompressDCG walks, the `asnd`
  * header decodeSound reads, a QuickTime music atom, parseDelverMap's header,
@@ -727,13 +722,13 @@ function byteEntropy(data) {
  *
  * MEASURED, both ways, over the 1,558 labelled resources of the shipped
  * archive and their decrypted twins: every test fires on the plaintexts of
- * its own kind and on NONE of the 1,558 noise twins. That negative control is
+ * its kind and on NONE of the 1,558 noise twins. That negative control is
  * the half worth keeping -- a shape test that fires on noise does not widen
  * the structure path, it moves errors into it. addons_check.mjs prints the
  * per-shape figures on every run.
  */
 function delvLooksLikeSound(b) {
-  // js/page-labels.js decodeSound: Delver's own sound resource, not a Mac
+  // js/page-labels.js decodeSound: Delver's sound resource, not a Mac
   // `snd `. A four-byte magic is the strongest evidence in the archive.
   return b.length > 12 && typeof fourcc === 'function' && fourcc(b, 0) === 'asnd';
 }
@@ -757,7 +752,7 @@ function delvLooksLikeMusic(b) {
  * already written, and a terminator (0xFF or 0xFE) reached with at most one
  * byte left over. That last clause is what makes it decisive: noise reaches a
  * terminator byte eventually, but essentially never at the end of the
- * resource. `off` is 4 for the sized resources that carry a {width, height}
+ * resource. `off` is 4 for the sized resources that have a {width, height}
  * header before the stream.
  */
 function delvDcgStream(b, off) {
@@ -814,7 +809,7 @@ function delvLooksLikeImage(b) {
 
 function delvLooksLikeSymbolTable(b) {
   /* A symbol table pairs a two-byte key with a NUL-terminated name, and the
-     archive holds two: 0xF015, whose keys match the StoreRef field of a prop
+     archive has two: 0xF015, whose keys match the StoreRef field of a prop
      record, and 0xF014 beside it. The test is that the records tile the
      resource EXACTLY -- every name printable, every one terminated, the last
      ending on the final byte -- which no keystream output does.
@@ -845,7 +840,7 @@ function delvLooksLikePropList(b) {
      which the wiki reads as a prop-to-prop reference and which are zero in
      every record of the shipped archive because such links are made at
      runtime. Four zero bytes every sixteen is not something a keystream
-     produces. A save whose records DO carry a link fails this and falls
+     produces. A save whose records DO have a link fails this and falls
      through to the entropy comparison, which is the right way round -- a
      shape test that misses costs a fallback, one that fires on noise costs a
      resource. */
@@ -858,7 +853,7 @@ function delvLooksLikePropList(b) {
 /* Is the keystream for this resource id a single repeated byte?
  * ---------------------------------------------------------------------------
  * The PRNG is `key = (key * m + b) mod 65536` and only `key & 0xFF` is used, so
- * the low byte evolves on its own: `(key * m + b) mod 256` depends on nothing
+ * the low byte evolves by itself: `(key * m + b) mod 256` depends on nothing
  * but `key mod 256`. That orbit can land on a fixed point, and for **120 of the
  * 65,280 valid resource ids it starts on one** -- so the whole "encryption" is
  * XOR with one constant byte. They fall in subindexes 19, 47, 63, 83, 111, 127,
@@ -868,7 +863,7 @@ function delvLooksLikePropList(b) {
  * This matters because a constant XOR is a PERMUTATION of byte values, so the
  * two candidates have the same byte histogram with the labels moved. Every
  * statistic that reads only the shape of that histogram is blind to the
- * difference **by construction** -- Shannon entropy here, and delvmod's own
+ * difference **by construction** -- Shannon entropy here, and delvmod's
  * flatness measure in `decrypt_if_required` for the same reason. Their two
  * values are not merely close, they are mathematically equal, and what actually
  * decided the comparison was the order the terms were summed in: of the 23,
@@ -882,7 +877,7 @@ function delvLooksLikePropList(b) {
  * for an id whose keystream is provably constant.
  *
  * The short periods are fine and were checked rather than assumed: period 2, 4,
- * 8, 16, 32, 64, 128 and 256 agree on every resource in the archive, because a
+ * 8, 16, 32, 64, 128 and 256 match on every resource in the archive, because a
  * period above 1 is several interleaved permutations and no longer preserves
  * the histogram. The blind spot is period 1 alone.
  */
@@ -905,7 +900,7 @@ function delvZeroBytes(data) {
    that only has to be self-consistent. The two script tests are last and are
    reached through `typeof` because js/delv-script.js is not one of the four
    files ratlizard.github.io vendors under www/delv/; everything above them is
-   in this file or in mac-bytes.js, which it does vendor, so the player gets
+   in this file or in mac-bytes.js, which it does vendor, so the player has
    the same verdicts for everything but a script. */
 const DELV_SHAPES = [
   ['sound', b => delvLooksLikeSound(b)],
@@ -922,14 +917,14 @@ const DELV_SHAPES = [
 // and running the speculative decryptor on them corrupts the bytes -- which
 // previously made 36 of 42 Map headers unparseable and pushed prop
 // coordinates far outside the map bounds (so props silently drew off-canvas).
-/* Which subindexes are encrypted is not something to guess at.
+/* Which subindexes are encrypted is not something to assume.
  *
  * The archive format does not flag it, so this file used to decrypt every
  * resource speculatively and keep whichever version looked more like
  * plaintext. That heuristic had already grown three escalating special cases
  * (all-zero payloads, a container-structure test, a named-script test), each
  * one added after it got a specific resource wrong -- which is what it looks
- * like when a guess is standing in for knowledge.
+ * like when an assumption stands in for knowledge.
  *
  * delvmod states it outright. From its Scenario class, in
  * sources/github_delvmod/code/delv/archive.py:
@@ -955,9 +950,9 @@ const DELV_CLEAR_SUBN = new Set([0,3,127,128,131,135,137,141,142,143,144,187,239
 const DELV_CLEAR_RESID = new Set([0x0210]);
 /* The two subindexes only a PLAYER FILE has, and they are kept apart from the
    three tables above on purpose: those are delvmod's, compared against
-   delvmod's own source by `delv_crosscheck.mjs`, and adding to them would
+   delvmod's source by `delv_crosscheck.mjs`, and adding to them would
    turn the oracle into a mirror. This one is ours, and it is read out of the
-   executable rather than guessed.
+   executable rather than assumed.
 
    Every segment the engine writes into a player file goes through
    `TCachedSegFiles::SaveSegment` / `TSegFile::SaveSegment`, which do not
@@ -978,12 +973,12 @@ const DELV_CLEAR_RESID = new Set([0x0210]);
 const DELV_PLAYER_CLEAR_SUBN = new Set([129, 242]);
 /* The gremlins' subindex, 30 (0x1Fzz), the same way: ours, read out of the
    executable, and absent from delvmod's table only because the shipped file
-   holds nothing there. A gremlin's script is a class the engine dispatches
+   has nothing there. A gremlin's script is a class the engine dispatches
    to (`TGremlin::OnEnter` and `OnSignal` through `TInterp::Dispatch`), and
    Dispatch fetches every class with `TCachedSegFiles::GetEncryptedSegment`,
    which always passes it through `TSegFile::Decrypt`, keyed by the id. So a
    0x1Fzz resource is encrypted, and one the gremlin maker writes is read
-   back as it was written rather than by a guess over a few dozen bytes. */
+   back as it was written rather than by inference over a few dozen bytes. */
 const DELV_ENGINE_ENCRYPTED_SUBN = new Set([30]);
 
 function smartDecrypt(data, resid) {
@@ -995,21 +990,21 @@ function smartDecrypt(data, resid) {
     return { data: decryptResource(data, resid), wasDecrypted: true, rawEntropy: 0, decEntropy: 0, known: true };
   }
   // Beyond here the archive is telling us nothing and neither is delvmod, so
-  // decrypt speculatively and ask which of the two candidates is a payload:
+  // decrypt speculatively and test which of the two candidates is a payload:
   // first the two certainties below, then the shape bank, then entropy.
   const decrypted = decryptResource(data, resid);
   // A resource that decrypts to nothing but zero bytes is an empty
-  // placeholder, and that is a certainty, not a guess -- the odds of the
+  // placeholder, and that is a certainty, not an inference -- the odds of the
   // keystream matching arbitrary ciphertext across every byte are nil.
   // The score this replaces could not see it -- all-zeros has no printable
   // characters at all, so ciphertext noise beat it and 0x033F, 0x0500 and
   // 0x0540 were all being shown as raw garbage. The entropy comparison at the
-  // end usually reaches the same verdict, since zeros carry one byte value and
+  // end usually reaches the same verdict, since zeros have one byte value and
   // so sit at the floor of the scale -- but NOT always: a two-byte ciphertext
   // has equal bytes one time in 256, which is also an entropy of 0, and the
-  // tie then keeps the raw bytes and gets this case wrong. A certainty is not
+  // tie then leaves the raw bytes and is wrong in this case. A certainty is not
   // a statistic; neither of these two rules is redundant, and addons_check.mjs
-  // counts what they settle apart from what is guessed.
+  // counts what they settle apart from what is inferred.
   let allZero = decrypted.length > 0;
   for (let i = 0; i < decrypted.length; i++) if (decrypted[i] !== 0) { allZero = false; break; }
   let rawZero = data.length > 0;
@@ -1020,7 +1015,7 @@ function smartDecrypt(data, resid) {
      cannot be ciphertext: the keystream is never all zeros, so no plaintext
      encrypts to this. The score could not see that either -- zeros have no
      printable characters, so the noise it would decrypt to won -- and a saved
-     game is where it showed: three of a player file's own subindexes (0x82zz
+     game is where it showed: three of a player file's subindexes (0x82zz
      map memory, 0xF307 and 0xF308, the script heap) are zero-filled in an
      early save and were all being served as garbage. Like the rule above it,
      the entropy comparison settles this the same way for anything longer than
@@ -1030,7 +1025,7 @@ function smartDecrypt(data, resid) {
   /* Structure beats statistics whenever exactly one of the two candidates is
      a payload this archive is known to hold. Each shape is tried on both, most
      specific first, and the first one that recognises exactly one of them
-     decides; a shape that recognises both, or neither, says nothing and the
+     settles it; a shape that recognises both, or neither, adds nothing and the
      next is tried. (Both is the common case for the loosest test in the bank
      and is why it is last.) */
   for (const [shape, test] of DELV_SHAPES) {
@@ -1042,19 +1037,19 @@ function smartDecrypt(data, resid) {
   /* Nothing recognised either candidate, so fall back to the one statistic the
      cipher cannot escape: its keystream is uniform, so its output sits at 8
      bits of entropy a byte and anything structured sits below that. Taking the
-     lower of the two agrees with the tables on 98.5% of the shipped archive on
-     its own, against 63.3% for the printable-ratio score this replaces, and it
+     lower of the two matches the tables on 98.5% of the shipped archive by
+     itself, against 63.3% for the printable-ratio score this replaces, and it
      is what the score's entropy term was already reaching for before the
      printable ratio -- which is 0.37 for noise and lower for most of the
      archive -- overwhelmed it.
-     A tie keeps the bytes as stored. It is the conservative way round: reading
+     A tie leaves the bytes as stored. It is the conservative way round: reading
      an encrypted resource as stored shows noise, while decrypting a clear one
      rewrites it, and the second is the failure that made 36 of 42 map headers
      unparseable and drew props off the canvas. */
   /* Before the histogram statistic, the case it cannot see: a constant
      keystream, where the two candidates are the same histogram relabelled.
-     Zero bytes decide it instead. If the two hold equally many -- which no
-     resource in the shipped archive does -- this says nothing and the
+     Zero bytes settle it instead. If the two hold equally many -- which no
+     resource in the shipped archive does -- this settles nothing and the
      comparison below runs anyway, blind but no worse than before. */
   if (delvConstantKeystream(resid) !== null) {
     const rawZeros = delvZeroBytes(data), decZeros = delvZeroBytes(decrypted);
@@ -1070,7 +1065,7 @@ function smartDecrypt(data, resid) {
 
 function extractPascalStrings(data) {
   // Classic Pascal-style strings: a single length-prefix byte followed by
-  // that many printable bytes. The cap here used to be 63, which silently
+  // that many printable bytes. The cap here was once 63, which silently
   // chopped Cythera's dialogue -- many lines run well past 100 characters
   // (one is 160). A Pascal length byte allows up to 255.
   let entries = [];
@@ -1135,7 +1130,7 @@ function extractCStrings(data, minLen = 3) {
 }
 
 function extractReadableStrings(arc, data, resid) {
-  // If the resource is a Delver container, its own structure says where the
+  // If the resource is a Delver container, its structure shows where the
   // strings are, and that beats any scan. The byte-level scans below are the
   // fallback for data that is not a container at all.
   if (resid !== undefined) {
@@ -1187,20 +1182,20 @@ function hexDump(data) {
  * master index pairs filled in last. Being byte-identical to the reference
  * implementation is the point -- utilities/delv_write_check.mjs builds
  * archives with delvmod and fails if this function's output differs by one
- * byte, which is the same arrangement that keeps decompressDCG honest.
+ * byte, which is the same arrangement that checks decompressDCG.
  * If you change the layout here, you are no longer writing Delver archives,
  * you are writing something delvmod happens to be able to read.
  *
  * Two behaviours worth calling out because they look like bugs and are
- * delvmod's own, kept for equivalence:
+ * delvmod's, kept for equivalence:
  *   - A zero-length resource is dropped entirely (delvmod's `if res:` uses
  *     __len__, so an empty resource is falsy and never written).
  *   - Every subindex table is written as 256 entries / 2048 bytes and the
- *     master index records length 2048, whatever the table's own length
- *     said in the file this data came from.
+ *     master index records length 2048, whatever length the table
+ *     had in the file this data came from.
  */
 
-// The cipher is a keystream XOR, so it is its own inverse: encrypting IS
+// The cipher is a keystream XOR, so it is self-inverse: encrypting IS
 // decrypting. The alias exists so call sites say what they mean.
 const encryptResource = decryptResource;
 
@@ -1291,7 +1286,7 @@ function writeDelverArchive(spec) {
   }
 
   // Pass 3: the master index, back at the start. Empty subindexes stay as
-  // the zeros the pad already holds, which is exactly the (0,0) delvmod
+  // the zeros the pad already has, which is exactly the (0,0) delvmod
   // writes for them.
   for (const [subn, off] of master) {
     const at = mio + 8 + subn * 8;
@@ -1317,7 +1312,7 @@ function delverArchiveSpec(bytes) {
        the game's header and out of each patch's, and compares them at
        `0xb6d0`, which is not an equality test: the majors must match exactly
        and the game's minor must be at least the patch's. Both the shipped
-       archive and the Pumpkin Patch carry 02 00, so the format is 2.0 and the
+       archive and the Pumpkin Patch have 02 00, so the format is 2.0 and the
        rule is the ordinary one. The writer emits the minor now rather than
        leaving the pad's zero there; on every archive this project has seen it
        IS zero, so the write snapshot does not move. */
@@ -1354,22 +1349,22 @@ function delverArchiveSpec(bytes) {
 /* ---- applying a Magpie patch ----------------------------------------------
    The closest thing Cythera has to an add-on system, and it is not a plug-in
    folder: nothing in the game reads one. A Magpie patch is a Delver Archive
-   carrying the same scenario header as `Cythera Data` and holding only the
+   with the same scenario header as `Cythera Data` and holding only the
    resources to replace -- the Pumpkin Patch is 57,662 bytes against the
    archive's 5.6 MB, twelve tile sheets (subindex 141, 55 of their 192 tiles
    redrawn: jack-o'-lanterns, autumn foliage, blood on the blades) and one
-   resource of Magpie's own. Magpie merged it into the data file on disk in 2000; this does the same
+   resource of Magpie's. Magpie merged it into the data file on disk in 2000; this does the same
    merge in memory, so the browser player can boot a patched archive without
    anything being written back to a real file.
 
    THE MERGE IS BY RESOURCE ID AND NOTHING ELSE. Take the base archive's spec,
-   replace each resource whose id the patch also carries, re-serialize. The
+   replace each resource whose id the patch also has, re-serialize. The
    cipher is keyed by the resource id and indexed from the start of the
    resource (see `decryptResource`), not by where the resource sits in the
    file, so moving a resource to a new offset is safe and the plaintext the
    patch supplies re-encrypts to the same bytes wherever it lands.
 
-   WHAT IT REFUSES, and why each one is a real file someone will try:
+   WHAT IT REJECTS, and why each one is a real file someone will try:
    - a patch for another scenario: the title at offset 0 must match, or the
      resource ids mean something else entirely;
    - a saved game: `DelP` is the type of both a player file and a patch, and
@@ -1378,11 +1373,11 @@ function delverArchiveSpec(bytes) {
      instead;
    - anything that is not a Delver Archive at all.
 
-   A resource id the patch holds that the base does not is REPORTED AND
+   A resource id the patch has that the base does not is REPORTED AND
    SKIPPED rather than added, and so is one whose encryption verdict the two
-   sides disagree about. The one real patch carries exactly one such
+   sides differ on. The one real patch has exactly one such
    resource, 0xFFFF in a subindex the game's archive does not have, which is
-   Magpie's own bookkeeping and not game content. Adding ids the base lacks is
+   Magpie's bookkeeping and not game content. Adding ids the base lacks is
    how a patch would grow the archive into shapes nothing here has ever seen;
    the count comes back so a caller can say so. */
 function mergeDelverPatch(baseBytes, patchBytes) {
@@ -1405,7 +1400,7 @@ function mergeDelverPatch(baseBytes, patchBytes) {
       // A resource the game file does not have is added: a gremlin's script
       // (0x1F00 + n) is one the shipped file has none of, and the engine
       // runs it once it is there (26 September 2026). The two records that
-      // are Magpie's rather than the game's stay out: the patch's own
+      // are Magpie's rather than the game's stay out: the patch's
       // descriptor, and the installed list, which Magpie writes itself.
       if (r.resid === DELV_PATCH_DESCRIPTOR || r.resid === DELV_PATCH_INSTALLED) { skipped.push(r.resid); continue; }
       base.resources.push(r);
@@ -1432,7 +1427,7 @@ function mergeDelverPatch(baseBytes, patchBytes) {
 /* ---- reading a patch without applying it ----------------------------------
    `mergeDelverPatch` above answers "what would this do to my file"; these
    answer "what IS this file", which is what a page has to say before anyone
-   presses anything. Both were read out of Magpie's own PowerPC code in
+   presses anything. Both were read out of Magpie's PowerPC code in
    September 2026 (the reading is in `GRIMOIRE-NOTES.md`), and both are
    confirmed against the one real patch on this disk.
 
@@ -1447,22 +1442,22 @@ const DELV_PATCH_DESCRIPTOR = 0xFFFF;
 const DELV_PATCH_INSTALLED = 0xFFFE;
 const DELV_PATCH_DESCRIPTOR_LENGTH = 568;
 
-/* ONE BYTE AT +26 CARRIES BOTH THE TYPE AND THE TRUST LEVEL, and the mapping
-   is now read rather than guessed. It was deliberately left at the single
+/* ONE BYTE AT +26 HAS BOTH THE TYPE AND THE TRUST LEVEL, and the mapping
+   is now read rather than assumed. It was deliberately left at the single
    value the binary tests outright -- 0 is Bug Fix, from the "Bug fixes are
    always installed, and can not be removed" branch -- because naming the rest
-   from the order of `STR# 128` would have been a guess wearing a name.
+   from the order of `STR# 128` would have been an assumption wearing a name.
 
    Recovered 15 September 2026 from the row drawer's two dispatches at
    `code+0x0d4` and `code+0x134`, which set a type index and a trust index
    into `STR# 128` and then draw them as one label. `STR# 128` is, in order:
    Bug Fix, Expansion, Add On, Plug In, "Official ", "Approved ",
    "Unofficial", Invalid, Not Installed, Installed, then the six action words.
-   The two prefixes carry a trailing space because the label is concatenated.
+   The two prefixes have a trailing space because the label is concatenated.
 
    Two things the table shows that no reading of the strings would have:
 
-   - **Code 2 selects neither a type nor a trust level**, so a patch carrying
+   - **Code 2 selects neither a type nor a trust level**, so a patch with
      it draws with no label at all. That is the value the digest validator
      writes over this byte when a descriptor fails its check, and it is how a
      bad patch "comes out of the list wearing a different type" -- it comes
@@ -1481,20 +1476,20 @@ const DELV_PATCH_TYPES = {
   7: { type: 'Plug In', trust: 'Approved' },
   8: { type: 'Plug In' },
 };
-/* The code a patch made here carries. 5 is Add On with no trust level, which
+/* The code a patch made here has. 5 is Add On with no trust level, which
    is what a community patch honestly is: 3 is Official and would have this
    page's output claiming to be Ambrosia's, which is what it did until the
    maintainer saw "Official Add On" against a patch he had just made. */
 const DELV_PATCH_EXPORT_TYPE = 5;
 
 /* WHO MADE A PATCH IS NOT IN THE PATCH. The descriptor has room for it and
-   the Pumpkin Patch leaves it empty, so a page that wants to credit an author
-   has to carry the name itself, keyed by the one thing a patch does say about
+   the Pumpkin Patch leaves it empty, so a page that credits an author
+   has to supply the name itself, keyed by the one thing a patch does say about
    its identity. That is the UUID, which is also the only thing Magpie matches
    on.
 
-   This is the built-in-name-table rule applied to a person: an entry keeps
-   only what the file does not say, and every entry names where it came from.
+   This is the built-in-name-table rule applied to a person: an entry has
+   only what the file lacks, and every entry names where it came from.
    `source` is not shown as a citation; it is here so that an entry can be
    checked or removed by someone who was not in the room.
 
@@ -1519,8 +1514,8 @@ const DELV_PATCH_AUTHORS = {
    value and not produce one, so a patch written here could be applied by this
    page and by the browser player but would never have installed in Magpie.
 
-   IT IS A 64-BIT CRC, and it was recovered by reading Magpie's own PowerPC
-   code rather than by guessing: `0x8900` seeds an eight-entry basis from the
+   IT IS A 64-BIT CRC, and it was recovered by reading Magpie's PowerPC
+   code rather than by guesswork: `0x8900` seeds an eight-entry basis from the
    polynomial, `0x89c0` makes the 256-entry table out of it, and `0x8ac0` runs
    the loop. An earlier attempt transcribed those three routines and failed
    against about four hundred variants of word order, bit order, reflection,
@@ -1528,7 +1523,7 @@ const DELV_PATCH_AUTHORS = {
    are not in any description of a CRC:
 
    - **THE LENGTH IS FED IN AFTER THE DATA.** When the buffer runs out, a
-     second loop at `0x8b4c` keeps going with the LENGTH in place of a byte,
+     second loop at `0x8b4c` continues with the LENGTH in place of a byte,
      shifting it right eight each time until it is zero. So the digest covers
      the message and then its length, low byte first.
    - **THE RESULT IS COMPLEMENTED.** `0x8ba0` is `not r4` and `not r3`, the
@@ -1544,7 +1539,7 @@ const DELV_PATCH_AUTHORS = {
    HELD TO ONE SAMPLE, and it is the only one that exists: the Magpie Pumpkin
    Patch, whose descriptor states `c49ba981 0778a4b9`. A 64-bit value matching
    by accident is not a thing that happens, so the algorithm is right; what
-   one sample cannot prove is that Magpie ACCEPTS what we write, which wants a
+   one sample cannot prove is that Magpie ACCEPTS what we write, which needs a
    pass of Magpie under Mac OS 9 and is the one confirmation still outstanding. */
 const DELV_PATCH_CRC_POLY = { hi: 0x04C11D37, lo: 0x04C11DB7 };
 let _delvPatchCrcTable = null;
@@ -1570,10 +1565,10 @@ function delvPatchCrcTable() {
 }
 
 /* `bytes` is what the digest covers and `length` is the number the routine is
-   handed, which is also what gets folded in at the end. Magpie passes the
+   handed, which is also what is folded in at the end. Magpie passes the
    descriptor from +8 and a length of `statedLength - 8`, which is what
-   `delverPatchCheckValue` below does; this takes both so the two can be told
-   apart in a check. */
+   `delverPatchCheckValue` below does; this accepts both so the two can be
+   distinguished in a check. */
 function delvPatchCrc(bytes, length) {
   const table = delvPatchCrcTable();
   const xor = (a, b) => ({ hi: (a.hi ^ b.hi) >>> 0, lo: (a.lo ^ b.lo) >>> 0 });
@@ -1614,17 +1609,17 @@ function delverUuidText(bytes, at) {
   return s;
 }
 
-/* The descriptor of a patch, from the patch archive's own spec. Null when the
-   file carries no `0xFFFF` at all, which is the ordinary answer for a saved
+/* The descriptor of a patch, from the patch archive's spec. Null when the
+   file has no `0xFFFF` at all, which is the ordinary answer for a saved
    game and for the shipped archive.
 
-   THE DESCRIPTION IS AT +0x138 AND THE DISASSEMBLY SAID +0x13B. The reading
-   of Magpie's row drawer put it three bytes later; the file itself is
+   THE DESCRIPTION IS AT +0x138 AND THE DISASSEMBLY READ +0x13B. The reading of
+   Magpie's row drawer put it three bytes later; the file itself is
    unambiguous, a length byte of 82 at +0x138 followed by exactly 82 bytes of
    text and then zeroes to the end, which is a Pascal string at +0x138 and
-   nothing else. The sample wins and the discrepancy is recorded rather than
-   smoothed over: it means one of the two readings of that routine is wrong,
-   and only the offset is affected. */
+   nothing else. The sample is taken as right and the discrepancy is recorded
+   rather than smoothed over: it means one of the two readings of that routine
+   is wrong, and only the offset is affected. */
 /* Is this archive a Magpie patch, decided without decrypting the whole of it?
    `delverArchiveSpec` walks and decrypts every resource, which on the 5.6 MB
    scenario is real time to spend on a file that has only just been dropped,
@@ -1668,21 +1663,21 @@ function delverPatchDescriptor(spec) {
     })(),
     uuid: d.slice(8, 24),
     uuidText: delverUuidText(d, 8),
-    // +24 is the descriptor's own length. Magpie refuses anything but 568, so
+    // +24 is the descriptor's length. Magpie rejects anything but 568, so
     // a disagreement here is a patch Magpie would not have listed either.
     statedLength: stated,
     actualLength: d.length,
     lengthAgrees: stated === DELV_PATCH_DESCRIPTOR_LENGTH && d.length === DELV_PATCH_DESCRIPTOR_LENGTH,
     // +26 is the type and trust code. See the table above for why only 0 is
-    // named, and why 2 is worth saying something about.
+    // named, and why 2 is worth a note.
     typeCode: d[26],
     typeName: (DELV_PATCH_TYPES[d[26]] || {}).type || null,
     trustName: (DELV_PATCH_TYPES[d[26]] || {}).trust || null,
-    // How Magpie's own list would label it: the trust prefix and the type,
+    // How Magpie's list would label it: the trust prefix and the type,
     // and nothing at all when the code selects neither.
     typeLabel: [(DELV_PATCH_TYPES[d[26]] || {}).trust, (DELV_PATCH_TYPES[d[26]] || {}).type].filter(Boolean).join(' ') || null,
     typeOverwritten: d[26] === 2,
-    // +28 is the descriptor's own file offset, compared against the patch
+    // +28 is the descriptor's file offset, compared against the patch
     // archive's subindex-255 offset. A descriptor lifted out of one file and
     // into another fails this and nothing else would notice.
     selfOffset: u32be(d, 28),
@@ -1692,7 +1687,7 @@ function delverPatchDescriptor(spec) {
   };
 }
 
-/* The UUIDs a game archive says have been applied to it. An absent `0xFFFE`
+/* The UUIDs a game archive records as applied to it. An absent `0xFFFE`
    and an empty one mean the same thing and are not distinguished: Magpie
    treats a missing resource as an empty list (`NewHandle(0)`), and an
    unpatched `Cythera Data` simply has no such resource. */
@@ -1706,18 +1701,18 @@ function delverInstalledPatchIds(spec) {
 }
 
 /* Everything a reader needs about one patch against one game file, as data:
-   who it says it is, whether the game file has it, whether Magpie would take
+   who it claims to be, whether the game file has it, whether Magpie would take
    it, and every resource it names with the shipped one beside it.
 
    IT APPLIES NOTHING AND DECODES NOTHING. The report is offsets, lengths and
-   verdicts; a caller that wants to draw the two versions of a tile sheet has
-   both sets of bytes here and decodes them itself. That keeps this checkable
+   verdicts; a caller that needs to draw the two versions of a tile sheet has
+   both sets of bytes here and decodes them itself. That makes this checkable
    against the file rather than against a canvas, and it is why the whole
    report can be built for a patch the page will never merge.
 
-   `usable` is Magpie's own gate and not a judgement of our own: it is the
+   `usable` is Magpie's gate and not a judgement made here: it is the
    three tests the scan runs before a patch reaches the list. A patch that
-   fails one is reported with the reason rather than refused, because the
+   fails one is reported with the reason rather than rejected, because the
    reason is the interesting part. */
 function describeDelverPatch(baseSpec, patchSpec) {
   if (!baseSpec || !patchSpec) return null;
@@ -1736,8 +1731,8 @@ function describeDelverPatch(baseSpec, patchSpec) {
       patchData: p.data, patchLength: p.data.length, patchEncrypted: !!p.encrypted,
       baseData: b ? b.data : null, baseLength: b ? b.data.length : null,
       baseEncrypted: b ? !!b.encrypted : null,
-      // The three verdicts mergeDelverPatch reaches, named so a reader can be
-      // told why a resource will not move before pressing anything.
+      // The three verdicts mergeDelverPatch reaches, named so a reader can
+      // see why a resource will not move before pressing anything.
       inBase: !!b,
       encryptionAgrees: b ? (!!p.encrypted === !!b.encrypted) : null,
       identical: b ? same(p.data, b.data) : false
@@ -1787,11 +1782,11 @@ function describeDelverPatch(baseSpec, patchSpec) {
    `describeDelverPatch` above answers "what would this patch do to my file",
    which is one archive against a SUBSET of another. This is the general case:
    two whole archives, resource by resource. It is what a version comparison
-   is made of, and it is also how the page knows what to put in a patch it
+   is made of, and it is also how the page works out what to put in a patch it
    writes -- the edits you made are simply the diff between the file as it
    arrived and the file as it stands.
 
-   IT READS NO AMBIENT STATE. It takes the two archives as bytes, which is
+   IT READS NO AMBIENT STATE. It is given the two archives as bytes, which is
    how every reader in this file works since 18 September 2026; before that
    `getResourceBytes` read the open archive out of a global and this was the
    one comparison two archives could be given to.
@@ -1802,13 +1797,13 @@ function describeDelverPatch(baseSpec, patchSpec) {
    It compares PLAINTEXT, not stored bytes. Two archives can hold the same
    resource encrypted in one and clear in the other and the resource has not
    changed; comparing what was stored would call that a difference, and every
-   rebuild would look like a change to half the file. `encryptionChanged` says
-   so separately for the handful where the verdict differs. */
+   rebuild would look like a change to half the file. `encryptionChanged` records
+   it separately for the handful where the verdict differs. */
 /* Do two versions of a script resource differ only in the unset keys of its
    object table? A script resource ends in that table -- a count word, then
    six bytes an entry, a value and a key -- and an entry whose value is None
-   (0x5000FFFF) has a key the compiler never wrote: the slot holds whatever
-   its buffer did, which differs from build to build. Between Ambrosia's
+   (0x5000FFFF) has a key the compiler never wrote: the slot has whatever
+   its buffer had, which differs from build to build. Between Ambrosia's
    releases two thirds of the resources whose bytes differ differ there and
    nowhere else (24 September 2026, `releases_check.mjs`), and until that
    was read every count of what a release changed carried an asterisk. Two
@@ -1857,14 +1852,14 @@ function describeDelverDiff(a, b) {
   return {
     changed, added, removed, encryptionChanged, unchanged,
     // How many of `changed` differ only in unset table keys, which is not
-    // a change; `changed` keeps them, since a caller writing a patch of
-    // every difference wants the file as it is.
+    // a change; `changed` includes them, since a caller writing a patch of
+    // every difference needs the file as it is.
     unsetKeysOnly: changed.filter(c => c.unsetKeysOnly).length,
     aCount: am.size, bCount: bm.size,
     identical: !changed.length && !added.length && !removed.length,
     // Sorted so the biggest difference leads, which is what a reader wants to
     // open first; the ordering is presentation and the lists above are not
-    // reordered, so a caller that wants file order still has it.
+    // reordered, so a caller that needs file order still has it.
     groups: [...bySubn.values()].sort((x, y) =>
       (y.changed + y.added + y.removed) - (x.changed + x.added + x.removed) || x.subn - y.subn),
     titleChanged: a.scenarioTitle !== b.scenarioTitle,
@@ -1876,23 +1871,23 @@ function describeDelverDiff(a, b) {
    The inverse of the patches section: given a base archive and the ids that
    changed, write an archive shaped like a Magpie patch -- the base's scenario
    header, the changed resources and nothing else, and a descriptor at
-   `0xFFFF` saying what it is.
+   `0xFFFF` describing it.
 
    IT WRITES A REAL CHECK VALUE since 15 September 2026. The descriptor's
    first eight bytes are a 64-bit CRC that Magpie verifies before it will list
    a patch, and this wrote zeroes there for as long as the routine was unread.
    `delverPatchCheckValue` computes it now -- see that function for how it was
    recovered and for the two steps that had defeated the earlier attempt --
-   so a patch written here is intact by Magpie's own test.
+   so a patch written here is intact by Magpie's test.
 
    THAT IS NOT THE SAME AS KNOWING MAGPIE INSTALLS IT. The algorithm is held
    to the one real patch that exists and reproduces its value exactly, and a
    64-bit value does not match by accident; what no check here can reach is
    whether Magpie, running under Mac OS 9, accepts a descriptor we assembled.
-   That wants one pass of the real program and is the confirmation still
+   That needs one pass of the real program and is the confirmation still
    outstanding.
 
-   THE SELF-OFFSET NEEDS TWO PASSES. Descriptor +28 holds the descriptor's own
+   THE SELF-OFFSET NEEDS TWO PASSES. Descriptor +28 has the descriptor's
    offset in the file, and where it lands is decided by the writer. So the
    archive is written once to find out, the descriptor is corrected, and it is
    written again. The second write moves nothing -- the descriptor's length
@@ -1907,8 +1902,8 @@ function writeDelverPatch(baseSpec, resids, opts) {
   if (missing.length) throw new Error('not in the archive: ' + missing.map(i => '0x' + i.toString(16)).join(', '));
 
   const description = String(opts.description || '').slice(0, 255);
-  // Defaulting to 0 would make a caller that forgets the option write a Bug
-  // Fix, the one code Magpie refuses to uninstall. The page always passes
+  // Defaulting to 0 would make a caller that omits the option write a Bug
+  // Fix, the one code Magpie cannot uninstall. The page always passes
   // this explicitly; the default is here so that forgetting is harmless.
   const typeCode = opts.typeCode === undefined ? DELV_PATCH_EXPORT_TYPE : (opts.typeCode & 0xFF);
   // Magpie matches on the UUID and nothing else, and never parses one, so a
@@ -1976,9 +1971,9 @@ function writeDelverPatch(baseSpec, resids, opts) {
    `writeDelverMapTiles` copies the resource and writes two bytes per square
    changed. Nothing else in the resource is touched, and that is the property
    `delv_write_check.mjs` requires -- every other byte identical, the changed
-   squares reading back as asked. A whole-map serializer would have to
+   squares reading back as requested. A whole-map serializer would have to
    reproduce the roof block and the twelve bytes of padding at 20..31 that
-   nothing in this project understands, and would risk all of it to move one
+   this project has not decoded, and would risk all of it to move one
    tile.
 
    The prop list is the other way round: `writeDelverPropList` above already
@@ -1986,14 +1981,14 @@ function writeDelverPatch(baseSpec, resids, opts) {
    over all 14,485 records in the shipped archive, so adding and removing go
    through it. `makeDelverPropRecord` exists so the page never has to invent
    the fields a fresh record needs -- particularly `tail`, six bytes the
-   parser keeps as hex and nothing here understands.
+   parser stores as hex and this project has not decoded.
 
    REMOVING A PROP DOES NOT REMOVE THE RECORD, and that is the important part.
    A record can be inside another prop in the same list, and the link is that
    prop's INDEX -- so splicing an entry out silently re-points every
-   containment link after it. The file's own answer is a record whose flags
+   containment link after it. The file's answer is a record whose flags
    are 0xFF: delvmod's `show_in_map` drops one (`if self.flags == 0xFF: return
-   False`), this file's parser drops one, and the shipped archive carries
+   False`), this file's parser drops one, and the shipped archive has
    exactly five. So Erase writes 0xFF and leaves the record where it is, every
    index intact. */
 function writeDelverMapTiles(data, m, edits) {
@@ -2030,27 +2025,27 @@ function delverPropsAtSquare(records, x, y) {
 
 /* The inverse of parseDelverPropList, record for record. It can be exact
  * because the parse is lossless even where it looks lossy: x and y jointly
- * carry all 24 bits of the location word (holder links included -- a carried
+ * cover all 24 bits of the location word (holder links included -- a carried
  * prop's holder number is just what those bits mean, not different bits),
- * and `tail` keeps bytes 10..15 verbatim, covering delvmod's storeref u32
+ * and `tail` stores bytes 10..15 verbatim, covering delvmod's storeref u32
  * and trailing u16 that the parser only summarises. So editing a record is:
  * parse the list, change fields, write it back -- and an untouched list
  * writes back byte-identical, which delv_write_check.mjs proves over every
  * prop list in the real archive. Records are 16 bytes; a list whose length
- * is not a multiple of 16 keeps its trailing fragment only if the caller
+ * is not a multiple of 16 retains its trailing fragment only if the caller
  * re-appends it (none in the shipped archive has one). */
 /* ---- the character records, 0xF009 ---------------------------------------
    512 fixed 32-byte records, one per character index -- the same index that
-   names them in 0x0201, talks for them in 0x18nn and schedules them in
-   0xF00B. In `Cythera Data` they are where everybody starts; in a **saved
-   game** they are the live state of the world, which is why they are the
-   whole of what a save editor edits.
+   gives their names in 0x0201, their conversations in 0x18nn and their
+   schedules in 0xF00B. In `Cythera Data` they are where everybody starts; in a
+   **saved game** they are the live state of the world, which is why they are
+   the whole of what a save editor edits.
 
    The field map is delvmod's wiki page for F009, which was worked out by
    diffing the shipped table against saves taken either side of a change
    (Hector before and after joining the party is the worked example there).
    Two fields are not from it: **nutrition at byte 27**, read out of the
-   executable -- `TGameViewer::DoTicks` takes one off byte 27 of this record
+   executable -- `TGameViewer::DoTicks` subtracts one from byte 27 of this record
    every game hour (the sheet's Hunger section is drawn from that trace) --
    and byte 28's
    neighbours, left unnamed. In I.M.Cheater, the community's cheated save,
@@ -2058,11 +2053,11 @@ function delverPropsAtSquare(records, x, y) {
    training points), which is exactly what the file is famous for.
 
    THE UNKNOWN BYTES ARE KEPT AS BYTES, not as a hex tail. `parseDelverPropList`
-   keeps its six unexplained bytes in a `tail` string because they are
+   stores its six unexplained bytes in a `tail` string because they are
    contiguous; here what is not understood is scattered through the record --
    6..7, 22..26, 29..31, and a second appearance word at 20..21 that is
    usually but NOT always the same as the one at 4..5 (the hero's differ in
-   I.M.Cheater: aspect 13 against 0). So each record keeps `raw`, its own 32
+   I.M.Cheater: aspect 13 against 0). So each record retains `raw`, its 32
    bytes, and the writer starts from that copy and lays the named fields back
    over it. That makes `write(parse(x))` exactly `x` for any record, named
    fields or not, and it makes an edit touch only the bytes the edit is
@@ -2151,15 +2146,15 @@ function writeDelverCharacterRecords(records) {
    places the cast by its schedules when the file loads (126 of them moved
    in the trial), so placing them here would only be a second opinion.
 
-   Every figure of the game's own is an argument: the hero's fields are the
+   Every figure from the game is an argument: the hero's fields are the
    creation script's, read by the page (heroCreationRules), and karma,
-   difficulty, the clock and the day arrive in `o`. What is written in
+   difficulty, the clock and the day come in `o`. What is written in
    here is structure: the lengths the program gives each segment
    (save-format.md, *The write map*) and the empty patterns. Returns the
    file, or null when the scenario lacks a piece. */
 /* The characters' prop list, 0xF306, as a save has it for a character
    table and the hero's zone: record i a first byte and bytes 1 to 5 of
-   character i's record. A function of its own so that the rule can be held
+   character i's record. A separate function so that the rule can be held
    to a real save's table and list (utilities/game_check.mjs). */
 function delverCharacterPropList(f9, zone) {
   const f6 = new Uint8Array(256 * 16);
@@ -2167,7 +2162,7 @@ function delverCharacterPropList(f9, zone) {
     const r = f9.subarray(i * DELV_CHAR_RECORD, i * DELV_CHAR_RECORD + 6);
     // Whether a record is a character at all is its byte 7, as a real new
     // game's list has it (8 October 2026): 1 in every record the list
-    // gives a first byte, 0 in the rest, one of which carries a zone and
+    // gives a first byte, 0 in the rest, one of which has a zone and
     // nothing else. The rule had been "below 129", which is where the
     // shipped table happens to stop. Two characters of the shipped cast
     // still differ from a real new game's list, 92 and 125, both listed
@@ -2224,7 +2219,7 @@ function buildNewGameSave(arc, o) {
      stood in the hero's zone and given what a party member's record has
      and the scenario's has not, measured on the three companions of a
      player's save of 2001 against their shipped records: the bits of
-     byte 8 the hero's own record carries (0xC0, of which 0x40 is "in the
+     byte 8 in the hero's record (0xC0, of which 0x40 is "in the
      party"), behaviour 1 at byte 22, which is the follower's
      (behaviours.md), and the hero's alignment at byte 25. Their other
      differences in that save are wear: experience, level, what they
@@ -2278,7 +2273,7 @@ function buildNewGameSave(arc, o) {
 }
 
 /* A SCENARIO WITH AN EMPTY WORLD, made from the one open (8 October 2026):
-   the maintainer's "New scenario, with minimal Cythera Data file". It keeps
+   the maintainer's "New scenario, with minimal Cythera Data file". It retains
    the rulebook and drops the places and the people.
 
    What a new game reads was measured first, in the fork on the PowerPC
@@ -2346,9 +2341,9 @@ function buildNewScenario(arc, o) {
   // The creatures asked for, each an egg certain to hatch with one creature
   // in it, as the shipped hatcheries are written (save-format.md, *Kind 0
   // is the hatchery*): the egg 0x42 with 100 in Data2, and the record it
-  // holds 0x08, its location's low half-word the egg's index plus 0x100
+  // inside it 0x08, its location's low half-word the egg's index plus 0x100
   // under a 1, its Data1 the behaviour the creature starts with.
-  // An egg may ask for a chance under 100 and a stock over 1. Things placed
+  // An egg may have a chance under 100 and a stock over 1. Things placed
   // (`props`, each { x, y, type, aspect, rotated }) come after the eggs, as
   // plain records on the floor with no data.
   const eggs = [];
@@ -2372,7 +2367,7 @@ function buildNewScenario(arc, o) {
     if (made.has(r.resid)) { resources.push(Object.assign({}, r, { data: made.get(r.resid) })); made.delete(r.resid); }
     else if (!gone(r.resid)) resources.push(r);
   }
-  // A piece the scenario did not have takes the encryption its range has:
+  // A piece the scenario did not have is given the encryption its range has:
   // scripts are stored encrypted by their id, maps and lists plain.
   for (const [resid, data] of made) resources.push({ resid, data, encrypted: resid < 0x8000 });
   return writeDelverArchive(Object.assign({}, base, { resources }));
