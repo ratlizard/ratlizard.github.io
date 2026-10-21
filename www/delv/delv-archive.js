@@ -1,34 +1,41 @@
 /* delv-archive.js -- the Cythera archive itself: its master index, its
- * resources, the encryption laid over them, and the record formats stored *
- inside. * * This file, delv-graphics.js and delv-script.js were the
- Delver-specific half * of index.html's inline script, which had reached 9,800
- lines. * They came out because at that size the code that decodes a 1999 game
- and the * code that draws a web page had become indistinguishable, and because
- the two * delvmod cross-checks -- the only things here that can distinguish a
- wrong decoder * from a right one -- had nothing to point at but "the page". *
- * THE ARCHIVE IS AN ARGUMENT. openDelverArchive(bytes) returns the open *
- archive as an object -- its bytes, its master index bounds-checked, and *
- `derived`, the tables built from it -- and every function in this tier * that
- reads the archive is given that object as its first argument: *
- getResourceBytes(arc, resid), decodeResource(arc, ...), dvmRender(arc, ...). *
- Until 18 September 2026 the two were `fileBytes` and `masterIndexGlobal`, *
- top-level variables of this file that getResourceBytes read as ambient *
- globals, and the tables memoised in this tier were module-level Maps that *
- resetDerivedCaches() in the page had to list by name; ten of them * were
- missed at once on 16 September. A table keyed to an archive now lives * on
- that archive (derivedTable below) and goes when it does, and two * archives
- can be open at the same time, which the page could not do * before. The page's
- open file is `ARCHIVE` in js/page-archive.js. * * CLASSIC SCRIPT, deliberately
- -- no `type="module"`, no import, no export. * A module is fetched with CORS,
- and a page opened from file:// has an opaque * origin, so a module would not
- load at all when the page is double-clicked * rather than served.
- utilities/page_scripts.mjs throws if it finds one. * * LOAD ORDER: after
- js/mac-bytes.js, whose u16be/u32be/decodeMacRoman this * uses, after
- js/mac-containers.js and js/mac-vise.js (extractDelverArchive * unwraps a
- container or an installer), and before delv-graphics.js and * delv-script.js.
- * * The encryption lists near the bottom are delvmod's, not this project's,
- and * utilities/delv_crosscheck.mjs re-reads them out of delvmod's Python on
- every * run. The comment above smartDecrypt records what inferring them cost.
+ * resources, the encryption laid over them, and the record formats stored
+ * inside.
+ *
+ * This file, delv-graphics.js and delv-script.js were the Delver-specific half
+ * of index.html's inline script, which had reached 9,800 lines. They came out
+ * because at that size the code that decodes a 1999 game and the code that
+ * draws a web page had become indistinguishable, and because the two delvmod
+ * cross-checks -- the only things here that can distinguish a wrong decoder
+ * from a right one -- had nothing to point at but "the page".
+ *
+ * THE ARCHIVE IS AN ARGUMENT. openDelverArchive(bytes) returns the open archive
+ * as an object -- its bytes, its master index bounds-checked, and `derived`,
+ * the tables built from it -- and every function in this tier that reads the
+ * archive is given that object as its first argument: getResourceBytes(arc,
+ * resid), decodeResource(arc, ...), dvmRender(arc, ...). Until 18 September
+ * 2026 the two were `fileBytes` and `masterIndexGlobal`, top-level variables of
+ * this file that getResourceBytes read as ambient globals, and the tables
+ * memoised in this tier were module-level Maps that resetDerivedCaches() in the
+ * page had to list by name; ten of them were missed at once on 16 September. A
+ * table keyed to an archive now lives on that archive (derivedTable below) and
+ * goes when it does, and two archives can be open at the same time, which the
+ * old globals did not allow. The page's open file is `ARCHIVE` in
+ * js/page-archive.js.
+ *
+ * CLASSIC SCRIPT, deliberately -- no `type="module"`, no import, no export. A
+ * module is fetched with CORS, and a page opened from file:// has an opaque
+ * origin, so a module would not load at all when the page is double-clicked
+ * rather than served. utilities/page_scripts.mjs throws if it finds one.
+ *
+ * LOAD ORDER: after js/mac-bytes.js, whose u16be/u32be/decodeMacRoman this
+ * uses, after js/mac-containers.js and js/mac-vise.js (extractDelverArchive
+ * unwraps a container or an installer), and before delv-graphics.js and
+ * delv-script.js.
+ *
+ * The encryption lists near the bottom are delvmod's, not this project's, and
+ * utilities/delv_crosscheck.mjs re-reads them out of delvmod's Python on every
+ * run. The comment above smartDecrypt records what inferring them cost.
  */
 
 /* The open archive. `bytes` is the whole data fork; `index` has 256 slots
@@ -254,7 +261,7 @@ function extractDelverArchive(bytes, opts) {
   if (direct.ok) return { bytes, via: 'data fork', info: direct };
   notes.push('read as-is, ' + direct.reason);
 
-  // The whole game at once: Cythera's installer is an Installer VISE
+  // The whole game in one file: Cythera's installer is an Installer VISE
   // archive (js/mac-vise.js) holding the archive, the application, the
   // Combat AI scripts and the documentation, each with both forks. The
   // archive is the one file of type 'DelS' in it. What comes back includes
@@ -1050,7 +1057,7 @@ function smartDecrypt(data, resid) {
      keystream, where the two candidates are the same histogram relabelled.
      Zero bytes settle it instead. If the two hold equally many -- which no
      resource in the shipped archive does -- this settles nothing and the
-     comparison below runs anyway, blind but no worse than before. */
+     comparison below runs anyway, blind, as it would without this check. */
   if (delvConstantKeystream(resid) !== null) {
     const rawZeros = delvZeroBytes(data), decZeros = delvZeroBytes(decrypted);
     if (decZeros > rawZeros) return { data: decrypted, wasDecrypted: true, rawEntropy: 0, decEntropy: 0, constantKeystream: true };
@@ -1379,7 +1386,7 @@ function delverArchiveSpec(bytes) {
    resource, 0xFFFF in a subindex the game's archive does not have, which is
    Magpie's bookkeeping and not game content. Adding ids the base lacks is
    how a patch would grow the archive into shapes nothing here has ever seen;
-   the count comes back so a caller can say so. */
+   the count comes back so a caller can show it. */
 function mergeDelverPatch(baseBytes, patchBytes) {
   const base = delverArchiveSpec(baseBytes);
   if (!base) throw new Error('the game archive is not a Delver Archive');
@@ -1410,8 +1417,8 @@ function mergeDelverPatch(baseBytes, patchBytes) {
     // Both sides ran the same smartDecrypt on the same id. When they reach
     // different verdicts one of the two plaintexts is not plaintext, and the
     // writer re-encrypts from the base's verdict -- so writing this resource
-    // would put garbage in the archive. Leave the original in place and say
-    // so. DELV_CLEAR_SUBN covers subindex 141, where the one real patch
+    // would put garbage in the archive. Leave the original in place and list
+    // the id in `disagreed`. DELV_CLEAR_SUBN covers subindex 141, where the one real patch
     // works, so this is a guard rather than a path anything has taken.
     if (!!r.encrypted !== !!target.encrypted) { disagreed.push(r.resid); continue; }
     target.data = r.data;
@@ -2280,7 +2287,7 @@ function buildNewGameSave(arc, o) {
    slice with every FSRead of the file logged, from launch to the first
    save: 490 of the 1,558 resources, a fifth of the bytes (the workbench's
    GRIMOIRE-NOTES.md, under `grimoire/october-list-kfw205`). In the order
-   read: the sound 0x9000; EVERY class of 0x10xx and 0x11xx, used or not;
+   read: the sound 0x9000; EVERY class of 0x10xx and 0x11xx, the unused ones included;
    every tile sheet 0x8Exx, twice; the 0xF0xx tables; the backdrop; the
    creation dialog's four string tables 0x0203 to 0x0206; the portrait
    picked; the creation script 0x1801 with its table 0x0501 and helpers;

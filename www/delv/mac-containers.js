@@ -12,7 +12,7 @@
  *   AppleSingle/Double     binary, from A/UX, NFS and Mac OS X
  *
  * Both pages had separate BinHex and MacBinary decoders, and each had solved
- * a problem the other had not: one found the payload correctly in a file with
+ * a problem the other had left open: one found the payload correctly in a file with
  * comment lines, the other handled a file with no resource fork. This is the
  * union of the two, plus AppleSingle, which neither had.
  *

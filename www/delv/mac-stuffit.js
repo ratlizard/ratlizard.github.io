@@ -74,7 +74,7 @@ function looksLikeStuffIt(bytes) {
  *                         rsrcLen, rsrcPackedLen, rsrcMethod, rsrcOffset }] }
  *
  * where dataOffset / rsrcOffset are where each fork's bytes sit in the
- * archive, stored or not. */
+ * archive, whether the fork is stored or compressed. */
 function parseStuffItArchive(bytes) {
   if (!looksLikeStuffIt(bytes)) throw new Error('not a StuffIt archive');
   return fourcc(bytes, 0) === 'SIT!' ? parseStuffItClassic(bytes) : parseStuffIt5(bytes);

@@ -119,14 +119,14 @@ const QT_ENV = { span: 1 / 65536, floor: 1 / 65536 };
    hands MusicPlayNote the same number (both 68K, in the same extension,
    read the same day), and the mixers multiply a sample by the gain and
    shift. So by its code QuickTime is in straight proportion from the
-   event to the output, and the recordings are not: either they were not
+   event to the output, and the recordings depart from that proportion: either they were not
    made by QuickTime itself (a SoundFont synthesizer playing these same
    samples squares velocity as a matter of course), or something outside
    the three components does it. The square is used because it is what
    the recordings sound like; a capture of the game playing in an
    emulated Mac would settle it. opts.velExp overrides it. */
 const QT_VELOCITY_POWER = 2;
-/* How many notes sound at once. The synthesizer requests 14 by default
+/* How many notes can sound at the same time. The synthesizer requests 14 by default
    ('SSkn': Requested Polyphony, 1 to 48) and then sets its features by the
    machine (SetSynthFeaturesByHardware), so what a given Mac had is not in
    the file. Held to the recordings, a limit of 14 is worse than none on
@@ -729,7 +729,7 @@ function qtmaRender(events, tones, lib, opts) {
    10, 11, 64 and 91, the pitch wheel and channel pressure become QuickTime's
    (8.8 fixed; pan 1 to 2; the wheel in semitones at the range the file
    sets, two by default). Everything else is counted and left out, and the
-   count is returned so the page can say so.
+   count is returned so the page can show how many were left out.
 
    utilities/midi_import_check.mjs checks this against the shipped tunes: each
    one's header rebuilt from what was read out of it is the shipped header

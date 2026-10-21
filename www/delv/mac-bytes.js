@@ -10,8 +10,9 @@
  * These are CLASSIC scripts, deliberately -- no `type="module"`, no `import`,
  * no `export`. A module script is fetched with CORS, and a page opened from
  * `file://` has an opaque origin, so a module would fail to load off a USB
- * stick or a download folder. A classic <script src> does not. Every page here
- * has to keep working when it is double-clicked rather than served, so:
+ * stick or a download folder. A classic <script src> loads either way. Every page
+ * here has to keep working when it is double-clicked rather than served, and
+ * three rules follow from that:
  *
  *   - declare things at top level and let them be globals,
  *   - never add `type="module"` to a <script> tag in these pages,

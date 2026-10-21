@@ -15,7 +15,8 @@
 // not of a phone's speed.
 //
 // Usage: node undither_probe.mjs [game.sit] [--dump <dir>] [--wait <seconds>]
-//   --dump writes raw.png and undithered.png, the frame before and after.
+//   --dump writes raw.png and undithered.png, the frame with and without the
+//   filter.
 //   --wait lets the game run that much longer first; the default, 25, captures
 //   the start board, whose dithered wood and plaques are what shows the
 //   brightness check working (grimoire's arithmetic darkens them by 7.56%).

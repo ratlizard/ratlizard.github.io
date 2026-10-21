@@ -108,7 +108,7 @@
      "Get G", "Move M cancels" -- the same thing twice over. The key is
      now the word's first letter, weighted and brightened; one word to a
      cell. (An earlier version of this comment blamed "Move M cancels" for the
-     pad overflowing its box. It did not: measuring every cell put that on
+     pad overflowing its box. That was wrong: measuring every cell put that on
      Type with "keyboard" beside it, which is why those two stack. Left here
      because the wrong reading was a reading of the source, and the right one
      needed a measurement.) */
@@ -212,7 +212,7 @@
   <div class="row"><b>Music</b> <span id="musicnote" class="dim"></span> <button id="musicclose">Close</button></div>
   <div class="row dim">Give it a zip, or files. Anything named <code>1A2B3C4D.mid</code> for the tune it replaces is taken at its word; anything else is put in track order and the first eleven become the game's eleven tunes. MIDI plays on the built-in instruments; recordings in any format this browser can decode are played as they are. The game still chooses which tune plays, when it starts and how loud it is. A tune already playing changes when it next starts.</div>
   <div class="row"><label><input type="checkbox" id="qtmusic" checked> Play the Game's Music on QuickTime's Instruments</label> <span id="qtnote" class="dim"></span></div>
-  <div class="row dim">The game's tunes hold notes, not sound. QuickTime played them on a set of sampled instruments, which this page fetches from archive.org's copy of the QuickTime 3 CD (7 MB, once). The built-in instruments play until the download is done. If the fetch fails, choose <code>QUICKTIM.EXE</code> or <code>QuickTimeMusicalInstruments.qtx</code> below.</div>
+  <div class="row dim">The game's tunes hold notes, not sound. QuickTime played them on a set of sampled instruments, which this page fetches from archive.org's copy of the QuickTime 3 CD (a single download of 7 MB). The built-in instruments play until the download is done. If the fetch fails, choose <code>QUICKTIM.EXE</code> or <code>QuickTimeMusicalInstruments.qtx</code> below.</div>
   <div class="row"><label><button id="musicfilebtn">Choose a zip, .mid or .wav</button><input type="file" id="musicfile" accept=".zip,.mid,.midi,.wav,.exe,.qtx" multiple hidden></label></div>
   <div class="row"><select id="musicsource"></select> <a id="musicdownload" class="linkbtn" target="_blank" rel="noopener">Download</a> <button id="musicfetch">Fetch</button></div>
   <div class="row"><input id="musicurl" type="url" placeholder="https://… any other zip"> <button id="musicload">Fetch</button></div>
@@ -1554,7 +1554,7 @@ document.getElementById('importfile').addEventListener('change', async e => {
 
    One thing is added. grimoire leaves the colours the game animates (palette
    indices 0xE0 to 0xFB, `isAnimatedIndex`) untouched; the mobile shell only
-   had RGB and could not. This page reads each pixel's index from the module
+   had RGB and so had no way to find those pixels. This page reads each pixel's index from the module
    (`cw_render_indices`) and gives those pixels no blend, as grimoire does.
 
    The filter draws into a separate WebGL canvas that is never shown; the
@@ -2152,7 +2152,7 @@ function pushAudio() {
   const src = new Uint8Array(mem.buffer, ptr, n);
   audioPushed += n; for (let i = 0; i < n; i += 64) if (Math.abs(src[i] - 128) > 4) audioLoud++;
   // Still waiting for the worklet: drop these rather than start the old path
-  // for a frame or two and hand the speaker two streams at once.
+  // for a frame or two and hand the speaker two streams together.
   if (audioMode === 'pending') return;
   if (audioNode) {
     // A frame off the wall clock can leave seconds of sound behind it. Only
@@ -2251,7 +2251,8 @@ function play() {
   // This starts small instead and grows while calls are quick, so the
   // expensive region is met in a small slice, and the spread of the cost is in
   // the log. A small slice that still lasts tens of seconds means a single
-  // instruction or the trap under it is responsible and the tick names where.
+  // instruction or the trap under it is responsible and the tick's log line
+  // has its address.
   // If thirty small slices each take a second, it is spread over the region
   // and a different thing to chase. Either way the page stops being held for
   // half a minute by a slice it chose to make big.
@@ -2354,7 +2355,7 @@ function play() {
     const dt = Math.min(now - lastT, 100); lastT = now;
     // On the worklet path the speaker sets the pace: run the guest for whatever brings
     // the ring back to AUDIO_TARGET, capped at a tenth of a second so one
-    // long frame cannot make the guest synthesise a second of music at once.
+    // long frame cannot make the guest synthesise a second of music in one go.
     // The old path has no ring, so it still goes by the wall clock.
     let samples;
     if (audioNode) {
@@ -2436,7 +2437,7 @@ function mouseUpAt(v, h) {
    presses, and presses at once if it moves or lifts first: a tap is still a
    click and a hold still a hold. A second finger that comes down after the press
    has to let the button go where it was, which the game reads as a click; the
-   wait makes that the rare case. A mouse or a pen presses at once, as before.
+   wait makes that the rare case. A mouse or a pen still presses immediately.
    The old mobile shell (alchemy's mobile/mobile.html) did the zoom arithmetic
    the same way. */
 const PINCH_WAIT_MS = 80, PINCH_SLOP = 8;

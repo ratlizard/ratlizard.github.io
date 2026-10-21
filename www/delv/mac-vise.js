@@ -64,7 +64,8 @@
    fails, which is the order systemless uses and covers the five streams in
    this installer that standard zlib rejects. One more word-reader habit was
    needed for the largest of the five: after a STORED block of odd length the
-   next block header also begins on a word boundary, not the byte after.
+   next block header also begins on a word boundary, skipping the odd byte
+   that follows the block.
 
    LOAD ORDER: after mac-bytes.js (u16be, u32be, fourcc, decodeMacRoman,
    crc32), mac-containers.js (sniffMacContainer) and mac-stuffit.js
