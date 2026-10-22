@@ -12,12 +12,12 @@
  *   arguments, in two files.
  *
  * PNG
- *   canvas.toBlob() writes a truecolour PNG and, depending on the engine,
- *   decorates it with an iCCP colour profile and sometimes an eXIf block. Both
- *   are actively harmful here: the profile makes a downstream tool colour-manage
+ *   canvas.toBlob() writes a truecolor PNG and, depending on the engine,
+ *   decorates it with an iCCP color profile and sometimes an eXIf block. Both
+ *   are actively harmful here: the profile makes a downstream tool color-manage
  *   pixels that are already exactly the values needed, and neither chunk has
  *   the one thing that matters, which is the palette. So indexed art is written
- *   by hand as colour-type-3 with PLTE and, where there is a transparent slot,
+ *   by hand as color-type-3 with PLTE and, where there is a transparent slot,
  *   tRNS -- and nothing else, so a decoder reproduces the CLUT byte for byte.
  */
 
@@ -133,7 +133,7 @@ async function encodeIndexedPNG(W, H, image, palette, transparentIndex) {
   const dv = new DataView(ihdr.buffer);
   dv.setUint32(0, W); dv.setUint32(4, H);
   ihdr[8] = 8;    // bit depth
-  ihdr[9] = 3;    // colour type 3 = indexed
+  ihdr[9] = 3;    // color type 3 = indexed
   ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;   // deflate / adaptive filter / no interlace
   const plte = new Uint8Array(n * 3);
   for (let i = 0; i < n; i++) {
@@ -145,7 +145,7 @@ async function encodeIndexedPNG(W, H, image, palette, transparentIndex) {
     pngChunk('IHDR', ihdr),
     pngChunk('PLTE', plte)
   ];
-  // tRNS for colour type 3 is a run of alpha values starting at index 0, and it
+  // tRNS for color type 3 is a run of alpha values starting at index 0, and it
   // may stop early -- everything past its end is opaque. The usual case here is
   // a single zero byte.
   if (transparentIndex !== null && transparentIndex !== undefined && transparentIndex >= 0) {
@@ -161,8 +161,8 @@ async function encodeIndexedPNG(W, H, image, palette, transparentIndex) {
   return out;
 }
 
-/* For the truecolour path, where the pixels only exist on a canvas: keep the
- * critical chunks and throw away everything the browser decorated them with. */
+/* For the truecolor path, where the pixels only exist on a canvas: keep the
+ * critical chunks and throw away everything the browser added. */
 const _PNG_KEEP = new Set(['IHDR', 'PLTE', 'tRNS', 'IDAT', 'IEND']);
 function stripPngMetadata(bytes) {
   const sig = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];

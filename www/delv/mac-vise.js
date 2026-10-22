@@ -4,7 +4,7 @@
    Cythera shipped as one file: "Cythera Installer", an application built with
    MindVision's Installer VISE 3.6. Its data fork is an `SVCT` archive holding
    the whole install tree -- the game, its data file, the Combat AI scripts,
-   the documentation, the licence, the InputSprocket drivers -- with both forks
+   the documentation, the license, the InputSprocket drivers -- with both forks
    of every file. `parseViseArchive()` reads that catalog and `viseExtract()`
    gives back a file's two forks. Nothing here depends on Cythera: it is the
    installer's format, and a MacBinary of any VISE 3 installer opens the same
@@ -18,7 +18,7 @@
    `src/game/vise.rs` in ratlizard/wolflizard (GPL-3.0-or-later), which in turn
    credits ScummVM's `common/compression/vise.cpp` for the table. The
    DelvTechWiki page on the installer (delvmod/wiki/) documents the same
-   catalog fields from the community side, and identified the CRC.
+   catalog fields from the community side and identified the CRC.
 
    Three things were established here, against the 1.0.4 installer, and are
    not in either source:
@@ -127,7 +127,7 @@ function inflateBuildTable(lengths, n) {
   return { count, symbol };
 }
 
-/* Inflate a raw DEFLATE stream into at most `expected` bytes.
+/* Inflate a raw DEFLATE stream into at most `outputLength` bytes.
  *
  *   storedAlign   8 for RFC 1951; 16 for VISE, whose STORED blocks begin on a
  *                 16-bit word boundary.
@@ -135,13 +135,13 @@ function inflateBuildTable(lengths, n) {
  *                 for RFC 1951; 6 for StuffIt X's Deflate, the one way it
  *                 differs (XADMaster's XADStuffItXDeflateVariant).
  *
- * Stops as soon as `expected` bytes exist, whatever the bitstream still
+ * Stops as soon as `outputLength` bytes exist, whatever the bitstream still
  * has. Runs on past a final block if the output is still short and input
  * remains -- systemless found installers whose streams are several finished
  * DEFLATE members back to back, each starting on a word. Throws on a
  * malformed stream or on running out of input. */
-function inflateRaw(input, expected, storedAlign, distBits = 5) {
-  const out = new Uint8Array(expected);
+function inflateRaw(input, outputLength, storedAlign, distBits = 5) {
+  const out = new Uint8Array(outputLength);
   let outPos = 0;
   let inPos = 0, bitBuf = 0, bitCnt = 0;
 
@@ -178,7 +178,7 @@ function inflateRaw(input, expected, storedAlign, distBits = 5) {
       let sym = decode(lencode);
       if (sym < 256) {
         out[outPos++] = sym;
-        if (outPos === expected) return true;
+        if (outPos === outputLength) return true;
         continue;
       }
       if (sym === 256) return false;
@@ -192,7 +192,7 @@ function inflateRaw(input, expected, storedAlign, distBits = 5) {
       let from = outPos - dist;
       for (let i = 0; i < len; i++) {
         out[outPos++] = out[from++];
-        if (outPos === expected) return true;
+        if (outPos === outputLength) return true;
       }
     }
   }
@@ -211,14 +211,14 @@ function inflateRaw(input, expected, storedAlign, distBits = 5) {
         throw new Error('stored block length check failed at input byte ' + inPos + ', output byte ' + outPos);
       inPos += 4;
       if (inPos + len > input.length) throw new Error('stored block ran out');
-      const take = Math.min(len, expected - outPos);
+      const take = Math.min(len, outputLength - outPos);
       out.set(input.subarray(inPos, inPos + take), outPos);
       outPos += take;
       inPos += len;
       // A word reader that just copied an odd number of bytes is holding
       // half a word; the next block header starts on the word after it.
       if (storedAlign === 16 && (inPos & 1)) inPos++;
-      done = outPos === expected;
+      done = outPos === outputLength;
     } else if (type === 1) {
       if (!fixedLen) {
         const l = new Uint8Array(288);
@@ -259,14 +259,14 @@ function inflateRaw(input, expected, storedAlign, distBits = 5) {
     }
     if (done) break;
     if (last) {
-      if (outPos >= expected) break;
+      if (outPos >= outputLength) break;
       // A finished member with output still owed: the next one starts on
       // the next word (byte, for a standard stream).
       alignInput(storedAlign);
-      if (inPos >= input.length) throw new Error('stream ended after ' + outPos + ' of ' + expected + ' bytes');
+      if (inPos >= input.length) throw new Error('stream ended after ' + outPos + ' of ' + outputLength + ' bytes');
     }
   }
-  if (outPos !== expected) throw new Error('stream yielded ' + outPos + ' of ' + expected + ' bytes');
+  if (outPos !== outputLength) throw new Error('stream yielded ' + outPos + ' of ' + outputLength + ' bytes');
   return out;
 }
 
@@ -315,7 +315,7 @@ function looksLikeVise(bytes) {
  * each decoded stream on the archive, so the nine files that share one
  * stream cost one inflate between them. */
 function parseViseArchive(bytes) {
-  if (!looksLikeVise(bytes)) throw new Error('not an Installer VISE archive: no SVCT signature');
+  if (!looksLikeVise(bytes)) throw new Error('not an Installer VISE archive, since it has no SVCT signature');
   const version = u32be(bytes, 16);
   const versionName = VISE_VERSIONS[version];
   if (!versionName) throw new Error('unsupported Installer VISE archive version 0x' + version.toString(16));
@@ -332,7 +332,7 @@ function parseViseArchive(bytes) {
     if (fourcc(bytes, cursor) !== 'PACK') throw new Error('extended catalog without its PACK prefix');
     cursor += VISE_EXTENDED_CATALOG_PREFIX_LEN;
   }
-  const need = (n, what) => {
+  const requireBytes = (n, what) => {
     if (cursor + n > bytes.length) throw new Error('catalog truncated in ' + what);
   };
 
@@ -340,11 +340,11 @@ function parseViseArchive(bytes) {
   const dirById = new Map();
   const entries = [];
   for (let index = 0; index < entryCount; index++) {
-    need(4, 'entry ' + index);
+    requireBytes(4, 'entry ' + index);
     const magic = fourcc(bytes, cursor);
     cursor += 4;
     if (magic === 'DVCT') {
-      need(VISE_DIRECTORY_RECORD_LEN, 'directory ' + index);
+      requireBytes(VISE_DIRECTORY_RECORD_LEN, 'directory ' + index);
       const rec = cursor;
       const id = u32be(bytes, rec + 24);
       const parentId = u32be(bytes, rec + 28);
@@ -352,7 +352,7 @@ function parseViseArchive(bytes) {
       cursor += VISE_DIRECTORY_RECORD_LEN;
       if (version === 0x80010300) cursor += 6;
       else if (extended) cursor += VISE_EXTENDED_DIRECTORY_SUFFIX_LEN;
-      need(nameLen, 'directory name ' + index);
+      requireBytes(nameLen, 'directory name ' + index);
       const name = decodeMacRoman(bytes.subarray(cursor, cursor + nameLen));
       cursor += nameLen;
       const parent = dirById.get(parentId);
@@ -360,7 +360,7 @@ function parseViseArchive(bytes) {
       dirs.push(dir);
       dirById.set(id, dir);
     } else if (magic === 'FVCT') {
-      need(VISE_FILE_RECORD_LEN, 'file ' + index);
+      requireBytes(VISE_FILE_RECORD_LEN, 'file ' + index);
       const rec = cursor;
       const type = fourcc(bytes, rec + 40), creator = fourcc(bytes, rec + 44);
       const finderFlags = u16be(bytes, rec + 48);
@@ -376,7 +376,7 @@ function parseViseArchive(bytes) {
       const nameLen = bytes[rec + 118];
       cursor += VISE_FILE_RECORD_LEN;
       if (extended) cursor += VISE_EXTENDED_FILE_SUFFIX_LEN;
-      need(nameLen, 'file name ' + index);
+      requireBytes(nameLen, 'file name ' + index);
       const name = decodeMacRoman(bytes.subarray(cursor, cursor + nameLen));
       cursor += nameLen;
       // A grouped file has an offset inside the shared stream for each
@@ -400,10 +400,10 @@ function parseViseArchive(bytes) {
   return { version, versionName, catalogOffset, bytes, dirs, entries, _streams: new Map() };
 }
 
-/* Undo the pair swap and the substitution, then inflate to `needed` bytes. */
-function viseDecodeStream(packed, needed) {
-  if (!needed) return new Uint8Array(0);
-  if (!packed.length) throw new Error('an empty stream cannot yield ' + needed + ' bytes');
+/* Undo the pair swap and the substitution, then inflate to `outputLength` bytes. */
+function viseDecodeStream(packed, outputLength) {
+  if (!outputLength) return new Uint8Array(0);
+  if (!packed.length) throw new Error('an empty stream cannot yield ' + outputLength + ' bytes');
   const plain = new Uint8Array(packed.length);
   const n = packed.length & ~1;
   for (let i = 0; i < n; i += 2) {
@@ -413,20 +413,20 @@ function viseDecodeStream(packed, needed) {
   if (packed.length & 1) plain[n] = VISE_DEOBFUSCATION_TABLE[packed[n]];
   let firstErr;
   for (const align of [8, 16]) {
-    try { return inflateRaw(plain, needed, align); }
+    try { return inflateRaw(plain, outputLength, align); }
     catch (e) { if (!firstErr) firstErr = e; }
   }
-  throw new Error('stream would not inflate: ' + firstErr.message);
+  throw new Error('stream would not inflate (' + firstErr.message + ')');
 }
 
-/* The decoded bytes of the stream at `offset`, long enough to hold `needed`.
+/* The decoded bytes of the stream at `offset`, long enough to hold `outputLength` bytes.
  * Cached per archive: a grouped stream is requested by every file in it. The
  * cache retains the longest decode requested so far, so a later request for
  * more re-inflates rather than reading past the end. */
-function viseStream(archive, offset, length, needed) {
+function viseStream(archive, offset, length, outputLength) {
   const have = archive._streams.get(offset);
-  if (have && have.length >= needed) return have;
-  const decoded = viseDecodeStream(archive.bytes.subarray(offset, offset + length), needed);
+  if (have && have.length >= outputLength) return have;
+  const decoded = viseDecodeStream(archive.bytes.subarray(offset, offset + length), outputLength);
   archive._streams.set(offset, decoded);
   return decoded;
 }
@@ -478,19 +478,19 @@ function sniffViseInstaller(bytes, pick) {
   if (looksLikeStuffIt(bytes)) {
     const sit = parseStuffItArchive(bytes);
     const found = [];
-    let refused = null;
+    let installerError = null;
     for (const e of sit.entries) {
       if (e.isFolder || e.type !== 'APPL' || e.dataLen < VISE_HEADER_LEN) continue;
       // Stored, and an SVCT: an installer. Compressed: remembered, and
       // reported if it turns out to be the only one.
       let data;
       try { data = stuffItFork(bytes, e, 'data'); }
-      catch (err) { if (e.creator === 'VIS3' && !refused) refused = err; continue; }
+      catch (err) { if (e.creator === 'VIS3' && !installerError) installerError = err; continue; }
       if (!looksLikeVise(data)) continue;
       found.push({ name: e.name, path: e.path, dataLen: e.dataLen, entry: e, data });
     }
     if (!found.length) {
-      if (refused) throw new Error('That is a ' + sit.format + ' archive holding an installer, but ' + refused.message + '.');
+      if (installerError) throw new Error('That is a ' + sit.format + ' archive holding an installer, but ' + installerError.message + '.');
       return null;
     }
     found.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));

@@ -832,7 +832,7 @@ function qtmaWrite(parts, events, opts) {
    through the file's tempo map. Formats 0 and 1; a file in SMPTE time
    is rejected by name. */
 function midiRead(bytes) {
-  if (fourcc(bytes, 0) !== 'MThd') throw new Error('not a MIDI file: it does not begin MThd');
+  if (fourcc(bytes, 0) !== 'MThd') throw new Error('not a MIDI file, since it does not begin with MThd');
   const format = u16be(bytes, 8), ntrk = u16be(bytes, 10), division = u16be(bytes, 12);
   if (format > 1) throw new Error('a format ' + format + ' MIDI file, where the page reads 0 and 1');
   if (division & 0x8000) throw new Error('a MIDI file timed in SMPTE frames, where the page reads beats');
@@ -849,7 +849,7 @@ function midiRead(bytes) {
       if (b === 0xFF) {
         const type = bytes[p + 1]; p += 2;
         const n = vlq();
-        if (type === 0x51 && n >= 3) tempos.push({ tick, us: (bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2], order: order++ });
+        if (type === 0x51 && n >= 3) tempos.push({ tick, microsPerBeat: (bytes[p] << 16) | (bytes[p + 1] << 8) | bytes[p + 2], order: order++ });
         p += n;
         if (type === 0x2F) break;
         continue;
@@ -865,13 +865,13 @@ function midiRead(bytes) {
   }
   tempos.sort((a, b) => a.tick - b.tick || a.order - b.order);
   // Seconds at a tick: the tempo changes before it, each for its stretch.
-  const marks = [{ tick: 0, sec: 0, us: 500000 }];
+  const marks = [{ tick: 0, sec: 0, microsPerBeat: 500000 }];
   for (const t of tempos) {
     const m = marks[marks.length - 1];
-    const sec = m.sec + (t.tick - m.tick) * m.us / 1e6 / division;
-    if (t.tick === m.tick) m.us = t.us; else marks.push({ tick: t.tick, sec, us: t.us });
+    const sec = m.sec + (t.tick - m.tick) * m.microsPerBeat / 1e6 / division;
+    if (t.tick === m.tick) m.microsPerBeat = t.microsPerBeat; else marks.push({ tick: t.tick, sec, microsPerBeat: t.microsPerBeat });
   }
-  const secAt = tick => { let m = marks[0]; for (const k of marks) { if (k.tick <= tick) m = k; else break; } return m.sec + (tick - m.tick) * m.us / 1e6 / division; };
+  const secAt = tick => { let m = marks[0]; for (const k of marks) { if (k.tick <= tick) m = k; else break; } return m.sec + (tick - m.tick) * m.microsPerBeat / 1e6 / division; };
   raw.sort((a, b) => a.tick - b.tick || a.order - b.order);
   for (const e of raw) e.sec = secAt(e.tick);
   return { format, division, events: raw, tempos: marks };

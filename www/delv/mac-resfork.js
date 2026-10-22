@@ -209,7 +209,7 @@ function writeResourceFork(resources, opts) {
   if (!Array.isArray(list)) throw new Error('writeResourceFork expected an array of resources');
   const reserved = opts.reserved || (resources && resources.reserved) || null;
   const preamble = opts.mapPreamble || (resources && resources.mapPreamble) || null;
-  const wantedTypes = opts.typeOrder || (resources && resources.typeOrder) || null;
+  const typeOrder = opts.typeOrder || (resources && resources.typeOrder) || null;
 
   /* Two orders, and they are not the same one. The DATA AREA is written in the
      order the array gives, because that is the order a rewrite has to keep.
@@ -225,12 +225,12 @@ function writeResourceFork(resources, opts) {
     if (!byType.has(r.type)) { byType.set(r.type, []); types.push(r.type); }
     byType.get(r.type).push(r);
   }
-  if (wantedTypes) {
-    const known = new Set(types);
-    for (const t of wantedTypes) if (!known.has(t)) throw new Error("typeOrder names '" + t + "', which no resource has");
-    if (wantedTypes.length !== types.length) throw new Error('typeOrder names ' + wantedTypes.length + ' types but the resources have ' + types.length);
+  if (typeOrder) {
+    const presentTypes = new Set(types);
+    for (const t of typeOrder) if (!presentTypes.has(t)) throw new Error("typeOrder names '" + t + "', which no resource has");
+    if (typeOrder.length !== types.length) throw new Error('typeOrder names ' + typeOrder.length + ' types but the resources have ' + types.length);
     types.length = 0;
-    for (const t of wantedTypes) types.push(t);
+    for (const t of typeOrder) types.push(t);
   }
   if (!types.length) throw new Error('a resource fork needs at least one resource');
   for (const t of types) if (byType.get(t).length > 65536)

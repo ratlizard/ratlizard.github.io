@@ -273,16 +273,16 @@ function extractDelverArchive(bytes, opts) {
     if (!entry) throw new Error('That is an ' + arc.versionName + ' installer' +
       (installer.container && installer.container.name ? ' ("' + installer.container.name + '")' : '') +
       ' with ' + arc.entries.length + ' files and no Delver archive among them.');
-    const got = viseExtract(arc, entry);
-    const d = describeDelverArchive(got.data);
+    const extracted = viseExtract(arc, entry);
+    const d = describeDelverArchive(extracted.data);
     if (!d.ok) throw new Error('"' + entry.name + '" inside the installer is not a Delver archive: ' + d.reason);
     const label = arc.versionName + ' installer' +
       (installer.container && installer.container.name ? ' "' + installer.container.name + '"' : '') +
       (installer.container ? ' in ' + installer.container.kind : '');
-    return { bytes: got.data, via: label, info: d,
+    return { bytes: extracted.data, via: label, info: d,
              forks: { kind: label, name: entry.name, type: entry.type, creator: entry.creator,
-                      data: got.data, rsrc: got.rsrc },
-             installer: { archive: arc, container: installer.container, entry, crcOk: got.crcOk,
+                      data: extracted.data, rsrc: extracted.rsrc },
+             installer: { archive: arc, container: installer.container, entry, crcOk: extracted.crcOk,
                           installers: installer.installers, picked: installer.picked } };
   }
 
@@ -308,17 +308,17 @@ function extractDelverArchive(bytes, opts) {
     let arc = null;
     try { arc = parseStuffItArchive(buf); } catch (e) { return null; }
     const where = arc.format + ' archive' + (wrapper ? ' in ' + wrapper : '');
-    const refused = [], found = [];
+    const failedEntries = [], found = [];
     for (const e of arc.entries) {
       if (e.isFolder || !e.dataLen) continue;
       let data;
       try { data = stuffItFork(buf, e, 'data'); }
-      catch (err) { refused.push(e.name + ' (' + err.message.replace(/^"[^"]*" data fork /, '') + ')'); continue; }
+      catch (err) { failedEntries.push(e.name + ' (' + err.message.replace(/^"[^"]*" data fork /, '') + ')'); continue; }
       const d = describeDelverArchive(data);
       if (!d.ok) { notes.push('"' + e.name + '" in the ' + where + ', ' + d.reason); continue; }
       found.push({ entry: e, data, info: d, rsrc: () => { try { return stuffItFork(buf, e, 'rsrc'); } catch (err) { return null; } } });
     }
-    if (refused.length) notes.push('in the ' + where + ', could not decompress ' + refused.join(', '));
+    if (failedEntries.length) notes.push('in the ' + where + ', could not decompress ' + failedEntries.join(', '));
     return pickContained(found, where, opts.pick);
   };
   const bare = fromStuffIt(bytes, '');
@@ -338,17 +338,17 @@ function extractDelverArchive(bytes, opts) {
     try { arc = parseZipArchive(buf); }
     catch (e) { notes.push('a zip archive that will not read: ' + e.message); return null; }
     const where = 'zip archive';
-    const refused = [], found = [];
+    const failedEntries = [], found = [];
     for (const e of arc.entries) {
       if (e.isFolder || !e.len) continue;
       let data;
       try { data = zipFork(buf, e, 'data'); }
-      catch (err) { refused.push(err.message); continue; }
+      catch (err) { failedEntries.push(err.message); continue; }
       const d = describeDelverArchive(data);
       if (!d.ok) { notes.push('"' + e.path + '" in the ' + where + ', ' + d.reason); continue; }
       found.push({ entry: e, data, info: d, rsrc: () => zipFork(buf, e, 'rsrc') });
     }
-    if (refused.length) notes.push('in the ' + where + ', could not read ' + refused.join(', '));
+    if (failedEntries.length) notes.push('in the ' + where + ', could not read ' + failedEntries.join(', '));
     return pickContained(found, where, opts.pick);
   };
   const zipped = fromZip(bytes);
@@ -368,17 +368,17 @@ function extractDelverArchive(bytes, opts) {
     try { arc = parseStuffItXArchive(buf); }
     catch (e) { notes.push('a StuffIt X archive that will not read: ' + e.message); return null; }
     const where = 'StuffIt X archive' + (wrapper ? ' in ' + wrapper : '');
-    const refused = [], found = [];
+    const failedEntries = [], found = [];
     for (const e of arc.entries) {
       if (e.isFolder || !e.dataLen) continue;
       let data;
       try { data = stuffItXFork(buf, e, 'data'); }
-      catch (err) { refused.push(e.name + ' (' + err.message.replace(/^StuffIt X: /, '') + ')'); continue; }
+      catch (err) { failedEntries.push(e.name + ' (' + err.message.replace(/^StuffIt X: /, '') + ')'); continue; }
       const d = describeDelverArchive(data);
       if (!d.ok) { notes.push('"' + e.name + '" in the ' + where + ', ' + d.reason); continue; }
       found.push({ entry: e, data, info: d, rsrc: () => { try { return stuffItXFork(buf, e, 'rsrc'); } catch (err) { return null; } } });
     }
-    if (refused.length) notes.push('in the ' + where + ', could not decompress ' + refused.join(', '));
+    if (failedEntries.length) notes.push('in the ' + where + ', could not decompress ' + failedEntries.join(', '));
     return pickContained(found, where, opts.pick);
   };
   const sitx = fromStuffItX(bytes, '');
@@ -397,17 +397,17 @@ function extractDelverArchive(bytes, opts) {
     try { arc = parseCompactProArchive(buf); }
     catch (e) { notes.push('a Compact Pro archive that will not read: ' + e.message); return null; }
     const where = 'Compact Pro archive' + (wrapper ? ' in ' + wrapper : '');
-    const refused = [], found = [];
+    const failedEntries = [], found = [];
     for (const e of arc.entries) {
       if (e.isFolder || !e.dataLen) continue;
       let data;
       try { data = e.read('data'); }
-      catch (err) { refused.push(e.name + ' (' + err.message.replace(/^"[^"]*" /, '') + ')'); continue; }
+      catch (err) { failedEntries.push(e.name + ' (' + err.message.replace(/^"[^"]*" /, '') + ')'); continue; }
       const d = describeDelverArchive(data);
       if (!d.ok) continue;
       found.push({ entry: e, data, info: d, rsrc: () => { try { return e.read('rsrc'); } catch (err) { return null; } } });
     }
-    if (refused.length) notes.push('in the ' + where + ', could not decompress ' + refused.join(', '));
+    if (failedEntries.length) notes.push('in the ' + where + ', could not decompress ' + failedEntries.join(', '));
     if (!found.length) notes.push('nothing in the ' + where + ' is a Delver archive');
     return pickContained(found, where, opts.pick);
   };
@@ -481,12 +481,12 @@ function bitsOf(data, size, index) {
   if (size === 0) return 0;
   const byteIndex0 = Math.floor(index/8);
   const bitIndex = index % 8;
-  const lastByteNeeded = Math.floor((index + size - 1) / 8);
+  const lastByte = Math.floor((index + size - 1) / 8);
   const bitSize = size % 8;
   let byteIndex = byteIndex0;
   let truncated = false;
   let result = (data[byteIndex] !== undefined ? data[byteIndex] : 0) & (0xFF >> bitIndex);
-  while (byteIndex < lastByteNeeded) {
+  while (byteIndex < lastByte) {
     byteIndex += 1;
     if (data.length === byteIndex) { result <<= 8; truncated = true; break; }
     result = (result << 8) | (data[byteIndex] !== undefined ? data[byteIndex] : 0);
@@ -991,10 +991,10 @@ const DELV_ENGINE_ENCRYPTED_SUBN = new Set([30]);
 function smartDecrypt(data, resid) {
   const subn = Math.floor(resid / 0x100) - 1;
   if (DELV_CLEAR_RESID.has(resid) || DELV_CLEAR_SUBN.has(subn) || DELV_PLAYER_CLEAR_SUBN.has(subn)) {
-    return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, exempt: true, known: true };
+    return { data: data, wasDecrypted: false, rawEntropy: 0, decEntropy: 0, exempt: true, inTables: true };
   }
   if (DELV_ENCRYPTED_SUBN.has(subn) || DELV_ENGINE_ENCRYPTED_SUBN.has(subn)) {
-    return { data: decryptResource(data, resid), wasDecrypted: true, rawEntropy: 0, decEntropy: 0, known: true };
+    return { data: decryptResource(data, resid), wasDecrypted: true, rawEntropy: 0, decEntropy: 0, inTables: true };
   }
   // Beyond here the archive is telling us nothing and neither is delvmod, so
   // decrypt speculatively and test which of the two candidates is a payload:
@@ -1226,13 +1226,13 @@ function writeDelverArchive(spec) {
   // by construction.
   let buf = new Uint8Array(0x20000);
   let end = 0;
-  const ensure = (need) => {
-    if (need > buf.length) {
-      const nb = new Uint8Array(Math.max(need, buf.length * 2));
+  const ensure = (requiredLength) => {
+    if (requiredLength > buf.length) {
+      const nb = new Uint8Array(Math.max(requiredLength, buf.length * 2));
       nb.set(buf);
       buf = nb;
     }
-    if (need > end) end = need;
+    if (requiredLength > end) end = requiredLength;
   };
   const w8 = (v, at) => { ensure(at + 1); buf[at] = v & 0xFF; };
   const w32 = (v, at) => {
@@ -1393,7 +1393,7 @@ function mergeDelverPatch(baseBytes, patchBytes) {
   const patch = delverArchiveSpec(patchBytes);
   if (!patch) throw new Error('that file is not a Delver Archive, so it is not a Magpie patch');
   if (patch.playerName)
-    throw new Error('that is a saved game (' + patch.playerName + '), not a patch; import it as a character instead');
+    throw new Error('that is a saved game (' + patch.playerName + '), not a patch. Import it as a character instead');
   if (patch.scenarioTitle !== base.scenarioTitle)
     throw new Error('that patch is for ' + JSON.stringify(patch.scenarioTitle) +
                     ', and this game is ' + JSON.stringify(base.scenarioTitle));
@@ -1425,8 +1425,8 @@ function mergeDelverPatch(baseBytes, patchBytes) {
     replaced.push(r.resid);
   }
   if (!replaced.length && !added.length)
-    throw new Error('none of that patch\'s ' + patch.resources.length +
-                    ' resource(s) could be applied to the game archive');
+    throw new Error('the page could apply none of that patch\'s ' + patch.resources.length +
+                    ' resource(s) to the game archive');
   return { bytes: writeDelverArchive(base), replaced, added, skipped, disagreed,
            title: patch.scenarioTitle };
 }
@@ -1664,8 +1664,8 @@ function delverPatchDescriptor(spec) {
     // Since the routine was recovered, the page can do what Magpie does and
     // say whether the descriptor is intact rather than only quoting it.
     checkValueValid: (() => {
-      const want = delverPatchCheckValue(d);
-      for (let i = 0; i < 8; i++) if (want[i] !== d[i]) return false;
+      const expected = delverPatchCheckValue(d);
+      for (let i = 0; i < 8; i++) if (expected[i] !== d[i]) return false;
       return true;
     })(),
     uuid: d.slice(8, 24),
@@ -1902,10 +1902,10 @@ function describeDelverDiff(a, b) {
 function writeDelverPatch(baseSpec, resids, opts) {
   opts = opts || {};
   if (!baseSpec) throw new Error('no archive to take resources from');
-  const wanted = [...new Set(resids || [])].sort((x, y) => x - y);
-  if (!wanted.length) throw new Error('nothing has changed, so there is nothing to put in a patch');
+  const changedResids = [...new Set(resids || [])].sort((x, y) => x - y);
+  if (!changedResids.length) throw new Error('nothing has changed, so there is nothing to put in a patch');
   const byId = new Map(baseSpec.resources.map(r => [r.resid, r]));
-  const missing = wanted.filter(id => !byId.has(id));
+  const missing = changedResids.filter(id => !byId.has(id));
   if (missing.length) throw new Error('not in the archive: ' + missing.map(i => '0x' + i.toString(16)).join(', '));
 
   const description = String(opts.description || '').slice(0, 255);
@@ -1946,7 +1946,7 @@ function writeDelverPatch(baseSpec, resids, opts) {
     playerName: '',
     formatMajor: baseSpec.formatMajor, formatMinor: baseSpec.formatMinor,
     unknown40: baseSpec.unknown40, unknown48: baseSpec.unknown48,
-    resources: wanted.map(id => byId.get(id))
+    resources: changedResids.map(id => byId.get(id))
       .map(r => ({ resid: r.resid, data: r.data, encrypted: r.encrypted }))
       .concat([{ resid: DELV_PATCH_DESCRIPTOR, data: descriptorFor(selfOffset), encrypted: false }])
   });
@@ -1956,7 +1956,7 @@ function writeDelverPatch(baseSpec, resids, opts) {
   if (!placed) throw new Error('the descriptor did not survive the first write');
   const bytes = build(placed.fileOffset);
   const back = delverPatchDescriptor(delverArchiveSpec(bytes));
-  return { bytes, resids: wanted, uuid, uuidText: delverUuidText(uuid, 0),
+  return { bytes, resids: changedResids, uuid, uuidText: delverUuidText(uuid, 0),
            description, typeCode, descriptorOffset: placed.fileOffset,
            // Read back rather than asserted: the descriptor that matters is
            // the one in the file, after the second write moved it.
@@ -2358,7 +2358,7 @@ function buildNewScenario(arc, o) {
     if (e.x < 0 || e.y < 0 || e.x >= w || e.y >= h) continue;
     const hold = 0x10000 | (eggs.length + 0x100), rec = (flags, x, y, d1, d2) =>
       ({ flags, x, y, aspect: 0, rotated: 0, proptype: e.type, d3: (d1 << 8) | d2, storeref: 0, tail: '000000000000' });
-    eggs.push(rec(0x42, e.x, e.y, 0, e.chance === undefined ? 100 : e.chance & 0xFF), rec(0x08, hold >> 12, hold & 0xFFF, e.behaviour, e.count === undefined ? 1 : e.count & 0xFF));
+    eggs.push(rec(0x42, e.x, e.y, 0, e.chance === undefined ? 100 : e.chance & 0xFF), rec(0x08, hold >> 12, hold & 0xFFF, e.behavior, e.count === undefined ? 1 : e.count & 0xFF));
   }
   for (const p of o.props || []) {
     if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue;

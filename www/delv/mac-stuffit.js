@@ -9,7 +9,7 @@
    application's 6.8 MB data fork, is STORED: method 0, no compression at
    all. That is also true of the 28 MB four-in-one bundle the page's
    gate downloads: all four installers' data forks in it are stored, and
-   only their resource forks are compressed, which the page has no use for.
+   only their resource forks are compressed, and the page does not use those.
    So reading the catalog and handing back stored forks was enough for a
    long time, and this file did no more than that.
 
@@ -19,7 +19,7 @@
    method-13 fork inside `614_MagpiePumpkinPatch.sit.hqx` -- so the page
    could list that archive and not open what was in it, and using the
    section meant unpacking the .sit on a desktop first. See the method 13
-   section at the foot of this file for what it is and where it came from.
+   section at the foot of this file for what it is and the source of its code.
    It also opens Pandora's Box, and the STANDALONE `Cythera_1.0.1` and
    `1.0.2` installer archives, whose forks are method 13 where the bundle's
    are stored -- which is worth stating plainly, because an earlier version
@@ -55,7 +55,7 @@ const SIT_METHOD_NAMES = {
 
 /* StuffIt X, the .sitx format, opens with "StuffIt!". It is a different format
    from the two above rather than a later version of them, with different
-   compressors, and this file reads none of it. Recognised only so that a rejection
+   compressors, and this file reads none of it. Recognized only so that a rejection
    can say what the file is. */
 function looksLikeStuffItX(bytes) {
   return !!bytes && bytes.length >= 8 && latin1(bytes.subarray(0, 8)) === 'StuffIt!';
@@ -267,7 +267,7 @@ function stuffItFork(bytes, entry, which) {
    most likely to need it. Method 13 also opens Pandora's Box and the 1.0.1
    and 1.0.2 installers, whose forks are both method 13.
 
-   WHERE IT CAME FROM. Ported, near line for line, from `Sit13Decoder` in
+   ITS SOURCE. Ported, near line for line, from `Sit13Decoder` in
    `stuffit-rs` 0.1.8 (Ben Letchford, MIT OR Apache-2.0) -- the same source
    this file's header layouts came from, and it in turn has the tables
    from The Unarchiver's `XADStuffIt13Handle.m` (LGPL), which is where the
@@ -282,7 +282,7 @@ function stuffItFork(bytes, entry, which) {
    There is no build step here and adding one is a standing no; and `js/`
    has to keep working from `file://`, where fetching a .wasm fails the same
    CORS check that rules out module scripts. Inlining a wasm blob as base64
-   would clear the second objection and not the first, and would put a
+   would clear the second objection and not the first. It would also put a
    binary nobody can rebuild into a repository whose whole design is that
    every file is served exactly as committed. So: a port, unmodified in
    structure, with the tables copied verbatim.
@@ -436,8 +436,8 @@ function sit13Decompress(packed, outLen) {
     if (val < 256) { out[n++] = val; cur = firstTree; continue; }
     if (val >= 320) break;
     // A match. The code to read the NEXT token with changes here and stays
-    // changed until a literal puts it back, which is the whole of what the
-    // two tables are for.
+    // changed until a literal puts it back. That is the only reason there
+    // are two tables.
     cur = secondTree;
     let length = val - 256 + 3;
     if (val === 318) length = br.bits(10) + 65;
@@ -491,14 +491,14 @@ const SIT13_OFFSET = [[5,6,3,3,3,3,3,3,3,4,6],[5,6,4,4,3,3,3,3,3,4,4,4,6],[6,7,4
    - **The last stage** is a run-length code: four equal bytes are followed by
      a count of how many more of them there are.
 
-   WHERE THE FORMAT CAME FROM. Ported from `SitArsenicDecoder` in stuffit-rs
+   THE FORMAT'S SOURCE. Ported from `SitArsenicDecoder` in stuffit-rs
    0.1.8 (Ben Letchford, MIT OR Apache-2.0), the same crate this file's header
    layouts came from, which has The Unarchiver's tables and cites
-   `XADStuffItArsenicHandle.m`. The randomisation table is transcribed from
+   `XADStuffItArsenicHandle.m`. The randomization table is transcribed from
    it. `utilities/sit_methods_check.mjs` checks the result against `unar` byte for
-   byte, which is the implementation all of these descend from. */
+   byte. All of these implementations descend from `unar`. */
 
-// The 256 gaps between the positions a randomised block flips. Transcribed
+// The 256 gaps between the positions a randomized block flips. Transcribed
 // from stuffit-rs, which took it from The Unarchiver.
 const ARSENIC_RANDOM = [
   0xee, 0x56, 0xf8, 0xc3, 0x9d, 0x9f, 0xae, 0x2c, 0xad, 0xcd, 0x24, 0x9d, 0xa6, 0x101, 0x18,
@@ -551,9 +551,9 @@ function arsDecoder(data) {
   for (let i = 0; i < ARS_BITS; i++) d.code = (d.code << 1) | d.bit();
   d.symbol = function (m) {
     const step = Math.floor(this.range / m.total);
-    const want = Math.floor(this.code / step);
+    const target = Math.floor(this.code / step);
     let cum = 0, n = 0;
-    while (n < m.n - 1 && cum + m.freq[n] <= want) { cum += m.freq[n]; n++; }
+    while (n < m.n - 1 && cum + m.freq[n] <= target) { cum += m.freq[n]; n++; }
     const size = m.freq[n], low = step * cum;
     this.code -= low;
     // The last symbol is given what is left of the range rather than its proportional
@@ -578,7 +578,7 @@ function arsenicDecompress(packed, outLen) {
   let written = 0;
   const header = arsModel(0, 2, 1, 256);
   if (dec.bitString(header, 8) !== 0x41 || dec.bitString(header, 8) !== 0x73)
-    throw new Error('that is not an Arsenic stream: it does not begin "As"');
+    throw new Error('that is not an Arsenic stream, since it does not begin with "As"');
   const blockBits = dec.bitString(header, 4) + 9;
 
   const selector = arsModel(0, 11, 8, 1024);
@@ -588,7 +588,7 @@ function arsenicDecompress(packed, outLen) {
 
   while (written < outLen) {
     if (dec.symbol(header) !== 0) break;               // the end of the last block
-    const randomised = dec.symbol(header) !== 0;
+    const randomized = dec.symbol(header) !== 0;
     const start = dec.bitString(header, blockBits);
 
     // The move-to-front pass, straight into the block, which cannot outgrow
@@ -617,7 +617,7 @@ function arsenicDecompress(packed, outLen) {
     selector.reset();
     for (const m of index) m.reset();
 
-    // The inverse transform: where each byte of the sorted column came from.
+    // The inverse transform: the place each byte of the sorted column had first.
     const counts = new Uint32Array(256);
     for (let i = 0; i < bn; i++) counts[block[i]]++;
     const place = new Uint32Array(256);
@@ -631,7 +631,7 @@ function arsenicDecompress(packed, outLen) {
       if (run > 0) { out[written++] = last; run--; continue; }
       idx = transform[idx];
       let b = block[idx];
-      if (randomised && randNext === taken) {
+      if (randomized && randNext === taken) {
         b ^= 1;
         randAt = (randAt + 1) & 255;
         randNext += ARSENIC_RANDOM[randAt];

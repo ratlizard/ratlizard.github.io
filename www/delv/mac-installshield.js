@@ -1,5 +1,5 @@
 /* mac-installshield.js -- the files inside an InstallShield 3 `data.z`, and
-   the PKWARE Data Compression Library "implode" each one is packed with.
+   the PKWARE Data Compression Library "implode" that packs each one.
    =========================================================================
 
    WHY A WINDOWS INSTALLER, IN A TREE ABOUT CLASSIC MAC FILES. QuickTime's
@@ -64,19 +64,19 @@ function dclTable(rep) {
 }
 let DCL_TABLES = null;
 
-/* Explode one DCL stream to `expected` bytes. */
-function dclExplode(input, expected) {
+/* Explode one DCL stream to `outputLength` bytes. */
+function dclExplode(input, outputLength) {
   if (!DCL_TABLES) DCL_TABLES = { len: dclTable(DCL_LEN_REP), dist: dclTable(DCL_DIST_REP) };
   if (input.length < 2) throw new Error('too short for a DCL stream');
   const coded = input[0], dictBits = input[1];
   if (coded === 1) throw new Error('a DCL stream with coded literals, which this page does not read');
   if (coded !== 0) throw new Error('not a DCL stream (literal flag ' + coded + ')');
   if (dictBits < 4 || dictBits > 6) throw new Error('not a DCL stream (dictionary ' + dictBits + ')');
-  const out = new Uint8Array(expected);
+  const out = new Uint8Array(outputLength);
   let pos = 2, buf = 0, cnt = 0, o = 0;
   const bits = n => {
     while (cnt < n) {
-      if (pos >= input.length) throw new Error('DCL stream ran out of input at byte ' + o + ' of ' + expected);
+      if (pos >= input.length) throw new Error('DCL stream ran out of input at byte ' + o + ' of ' + outputLength);
       buf |= input[pos++] << cnt; cnt += 8;
     }
     const v = buf & ((1 << n) - 1);
@@ -102,14 +102,14 @@ function dclExplode(input, expected) {
       const lowBits = len === 2 ? 2 : dictBits;
       const dist = (decode(DCL_TABLES.dist) << lowBits) + bits(lowBits) + 1;
       if (dist > o) throw new Error('a DCL match reaches before the start of the file');
-      if (o + len > expected) throw new Error('DCL stream runs past the ' + expected + ' bytes it should make');
+      if (o + len > outputLength) throw new Error('DCL stream runs past the ' + outputLength + ' bytes it should make');
       for (let k = 0; k < len; k++, o++) out[o] = out[o - dist];
     } else {
-      if (o >= expected) throw new Error('DCL stream runs past the ' + expected + ' bytes it should make');
+      if (o >= outputLength) throw new Error('DCL stream runs past the ' + outputLength + ' bytes it should make');
       out[o++] = bits(8);
     }
   }
-  if (o !== expected) throw new Error('DCL stream made ' + o + ' bytes where ' + expected + ' were expected');
+  if (o !== outputLength) throw new Error('DCL stream made ' + o + ' bytes where ' + outputLength + ' were expected');
   return out;
 }
 
