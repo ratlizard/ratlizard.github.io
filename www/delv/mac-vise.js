@@ -266,7 +266,7 @@ function inflateRaw(input, outputLength, storedAlign, distBits = 5) {
       if (inPos >= input.length) throw new Error('stream ended after ' + outPos + ' of ' + outputLength + ' bytes');
     }
   }
-  if (outPos !== outputLength) throw new Error('stream yielded ' + outPos + ' of ' + outputLength + ' bytes');
+  if (outPos !== outputLength) throw new Error('the stream gave ' + outPos + ' of ' + outputLength + ' bytes');
   return out;
 }
 
@@ -403,7 +403,7 @@ function parseViseArchive(bytes) {
 /* Undo the pair swap and the substitution, then inflate to `outputLength` bytes. */
 function viseDecodeStream(packed, outputLength) {
   if (!outputLength) return new Uint8Array(0);
-  if (!packed.length) throw new Error('an empty stream cannot yield ' + outputLength + ' bytes');
+  if (!packed.length) throw new Error('an empty stream cannot make ' + outputLength + ' bytes');
   const plain = new Uint8Array(packed.length);
   const n = packed.length & ~1;
   for (let i = 0; i < n; i += 2) {

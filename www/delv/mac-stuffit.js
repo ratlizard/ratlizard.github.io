@@ -689,7 +689,7 @@ function sitLzwDecompress(packed, outLen) {
     if (next < (1 << 14)) { prefix[next] = prev; suffix[next] = first; next++; }
     prev = code;
   }
-  if (o !== outLen) throw new Error('StuffIt method 2: ' + o + ' bytes where ' + outLen + ' were expected');
+  if (o !== outLen) throw new Error('StuffIt method 2: ' + o + ' bytes, not the ' + outLen + ' it should make');
   return out;
 }
 

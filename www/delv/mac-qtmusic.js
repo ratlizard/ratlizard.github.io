@@ -887,7 +887,7 @@ function midiToQtma(midiBytes, opts) {
   const ups = opts.unitsPerSecond || QTMA_UNITS_PER_SECOND;
   const like = opts.like ? qtmaHeaderParts(opts.like) : null;
   const model = like && like.parts.find(p => p.info) || null;
-  if (!model) throw new Error('a tune to take the synthesizer’s name from is needed, and none was given');
+  if (!model) throw new Error('the import needs a tune to take the synthesizer’s name from, and has none');
   const midi = midiRead(midiBytes);
   const dropped = {};
   const drop = why => { dropped[why] = (dropped[why] || 0) + 1; };
@@ -946,7 +946,7 @@ function midiToQtma(midiBytes, opts) {
   }
   // A note the file never ends is ended with the file.
   const last = midi.events.length ? unit(midi.events[midi.events.length - 1].sec) : 0;
-  for (const list of held.values()) for (const note of list) { note.dur = Math.max(1, last - note.t); drop('notes never ended, ended with the file'); }
+  for (const list of held.values()) for (const note of list) { note.dur = Math.max(1, last - note.t); drop('notes that never end, ended with the file'); }
   if (!parts.length) throw new Error('the MIDI file sounds no note');
   const data = qtmaWrite(parts, events, { flags: like.flags });
   const total = events.reduce((m, e) => Math.max(m, e.t + (e.dur || 0)), 0);

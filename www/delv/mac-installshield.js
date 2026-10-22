@@ -109,7 +109,7 @@ function dclExplode(input, outputLength) {
       out[o++] = bits(8);
     }
   }
-  if (o !== outputLength) throw new Error('DCL stream made ' + o + ' bytes where ' + outputLength + ' were expected');
+  if (o !== outputLength) throw new Error('DCL stream made ' + o + ' bytes, not the ' + outputLength + ' it should make');
   return out;
 }
 
