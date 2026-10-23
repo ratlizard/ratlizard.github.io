@@ -32,8 +32,20 @@ import co.harrishill.board.touch.tracking.TrackerParameters;
  * The other pieces act where they are set down: one presses its command
  * letter and then clicks under its centre, once; lift it and set it down
  * again to do it again. Knife A (attack), spoon U (use), sponge G (take),
- * little chef T (talk). A finger tap is an ordinary click, which on the map
- * is the game's Look.
+ * little chef T (talk). With a command armed, the game carries out the next
+ * click on the map as that command (TDroppableWindow::MouseRoutine), which
+ * is the click that follows the letter.
+ *
+ * A finger is the game's mouse, unchanged. On the map, in MOVE mode, the
+ * game reads a press by its gesture (MouseRoutine, 68K CODE5+006484): a quick
+ * click Looks, and Searches as well when the square is within reach; a
+ * double click does what suits what is there (walks to an empty square,
+ * talks to a person or attacks a hostile one, uses an item, Looks otherwise);
+ * a press held still for twice the double-click time opens the Commands
+ * menu; a press on the hero that moves walks the hero towards the finger
+ * while it is held; a press on a reachable item that moves slides, drops or
+ * throws it. An armed command or a script asking for a target takes the
+ * click first, and off the map a click is a click.
  */
 final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     static final String TAG = MainActivity.TAG;
