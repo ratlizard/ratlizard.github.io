@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
         });
         view.setOnTouchListener(this::touch);
         BoardMenu.start(this);
+        PieceMouse.start(this);
         Remote.startIfConfigured(this);
         emulator.start();
         Log.i(TAG, "display " + m.widthPixels + "x" + m.heightPixels + ", game " + w + "x" + h);
@@ -59,7 +60,7 @@ public class MainActivity extends Activity {
     }
 
     boolean touch(View v, MotionEvent e) {
-        if (e.getPointerId(e.getActionIndex()) != 0) return true;
+        if (e.getPointerId(e.getActionIndex()) != 0 || PieceMouse.active()) return true;
         // The Board reported touches of its own at the top-left pixels every
         // few seconds to the web app; they are not a player's.
         if (e.getActionMasked() == MotionEvent.ACTION_DOWN && e.getX() < 8 && e.getY() < 12) return true;

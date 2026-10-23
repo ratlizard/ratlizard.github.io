@@ -51,6 +51,7 @@ work="$cache/build"; rm -rf "$work"; mkdir -p "$work/classes" "$work/dex" "$work
 "$JAVA_HOME/bin/javac" --release 8 -nowarn -classpath "$JAR:$AAR/classes.jar" -d "$work/classes" $(find "$here/src" -name '*.java') > "$work/javac.log" 2>&1 || { cat "$work/javac.log"; exit 1; }
 "$BT/d8" --release --min-api 29 --lib "$JAR" --output "$work/dex" $(find "$work/classes" -name '*.class') "$AAR/classes.jar" 2>&1 | grep -v -E "^Warning|Missing class|is not found|^ *$" || true
 cp -L "$GAME" "$work/assets/game.sit"
+cp "$AAR/../models/arcade_v1.3.7.tflite" "$work/assets/"   # PieceMouse.java
 [ -z "$TUNES" ] || cp "$TUNES"/*.wav "$work/assets/tunes/"
 if [ -n "${SEED-}" ]; then
   mkdir -p "$work/assets/seed/${SEED%%=*}"
