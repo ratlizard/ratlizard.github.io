@@ -73,11 +73,16 @@ npx esbuild board.js --bundle --format=iife --outfile=dist/board.js --log-level=
 tunes_hook='s#^  try { recs = await listMusic(); } catch (e) { return 0; }$#&\
   if (window.boardTunes) recs = recs.concat(await window.boardTunes());#'
 [ "$tunes" = true ] || tunes_hook=''
+# With board.js, the game's size comes from window.boardScreen, called in
+# chooseScreen once the stage is measured.
+screen_hook='s#^  const vh = Math.max(1, Math.round(body.height - bar.height - insetY));$#&\
+  if (window.boardScreen) return window.boardScreen(vw, vh);#'
 qt_url='s#^const QT_INSTALLER_URL = .*#const QT_INSTALLER_URL = '"'QUICKTIM.EXE'"';#'
 [ -n "$QT" ] || qt_url=''
 sed -e 's#<script src="delv/mac-bytes.js"></script>#<script src="board.js"></script>\n&#' \
-  -e "$qt_url" -e "$tunes_hook" "$www/index.html" > dist/index.html
+  -e "$screen_hook" -e "$qt_url" -e "$tunes_hook" "$www/index.html" > dist/index.html
 grep -q 'src="board.js"' dist/index.html
+grep -q "window.boardScreen(vw, vh)" dist/index.html
 [ "$tunes" = false ] || grep -q "window.boardTunes" dist/index.html
 [ -z "$QT" ] || grep -q "^const QT_INSTALLER_URL = 'QUICKTIM.EXE';" dist/index.html
 

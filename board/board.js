@@ -38,6 +38,17 @@ if (BUNDLED_TUNES) {
   };
 }
 
+// The page sizes the game for a phone: 480 high, scaled up to fill the stage,
+// which on the Board's 1920x1080 panel was 887x480 drawn at about twice that.
+// On a Board the game is the size of the stage in device pixels, drawn one
+// to one; the start screen is 640x480 in the middle of it. pack.sh puts the
+// call to this in the page's chooseScreen, after it has measured the stage
+// (vw, vh, in CSS pixels).
+window.boardScreen = (vw, vh) => [
+  Math.min(2048, Math.max(640, Math.round(vw * devicePixelRatio))),
+  Math.min(2048, Math.max(480, Math.round(vh * devicePixelRatio))),
+];
+
 // The pads show only in the page's touch mode, which the page turns on for a
 // coarse pointer. Whether the Board's browser reports one is unknown, and the
 // Board is played by finger either way.
