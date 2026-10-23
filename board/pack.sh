@@ -86,4 +86,4 @@ grep -q "window.boardScreen(vw, vh)" dist/index.html
 [ "$tunes" = false ] || grep -q "window.boardTunes" dist/index.html
 [ -z "$QT" ] || grep -q "^const QT_INSTALLER_URL = 'QUICKTIM.EXE';" dist/index.html
 
-npx web-pack dist --name Cythera --model model.tflite -o cythera.webapp.zip
+npx web-pack dist --name Deerlizard --model model.tflite -o cythera.webapp.zip

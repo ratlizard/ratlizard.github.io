@@ -139,6 +139,12 @@ check(await run(`window.__touchChannel`) === 'subscribe', 'the SDK took the stan
 await tapOn('#play');
 try { await waitFor(() => run(`document.body.classList.contains('playing')`), 'play to start', 60000); ok('a finger on Play starts the game'); }
 catch (e) { fail('a finger on Play', e.message); }
+// The game is the stage's size, drawn one to one (board.js boardScreen): the
+// page alone would make it 480 high and scale it up.
+const size = await run(`(() => { const c = document.getElementById('screen'), r = c.getBoundingClientRect(), s = document.getElementById('stage');
+  return [c.width, c.height, Math.round(r.width * devicePixelRatio), Math.round(r.height * devicePixelRatio), s.clientWidth, s.clientHeight]; })()`);
+check(size[0] === size[4] && size[1] === size[5] && size[0] === size[2] && size[1] === size[3],
+  `the game is the stage's ${size[4]}x${size[5]}, drawn one to one`, `the game ${size[0]}x${size[1]}, drawn at ${size[2]}x${size[3]}, stage ${size[4]}x${size[5]}`);
 const how = await probeFact('touch');
 check(how === 'replayed from Board.input', 'the adapter settled on replaying fingers', String(how));
 await tap(W - 40, 20);
