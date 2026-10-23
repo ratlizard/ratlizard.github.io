@@ -14,8 +14,8 @@
 #          e-z-g-disassembly's reference/carmen-time/board/aar)
 #   SEED   a test build: NAME=FOLDER, a kit save folder put in the game's
 #          folder as character NAME the first time the app starts
-#   REMOTE a test build: a port on which Remote.java takes taps and keys
-#          from this computer
+#   REMOTE a test build: the port for taps and keys sent from this
+#          computer (Remote.java)
 #   KEYSTORE  the signing key; an installed app is updated only with the key
 #          it was signed with (default .cache/deerlizard.keystore, made once)
 #
