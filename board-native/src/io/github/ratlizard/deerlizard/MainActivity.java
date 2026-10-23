@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
         });
         view.setOnTouchListener(this::touch);
         BoardMenu.start(this);
-        PieceMouse.start(this);
+        PieceStick.start(this);
         Remote.startIfConfigured(this);
         emulator.start();
         Log.i(TAG, "display " + m.widthPixels + "x" + m.heightPixels + ", game " + w + "x" + h);
@@ -59,11 +59,16 @@ public class MainActivity extends Activity {
         };
     }
 
+    boolean pieceTouch;   // the touch now down is not a finger's
+
     boolean touch(View v, MotionEvent e) {
-        if (e.getPointerId(e.getActionIndex()) != 0 || PieceMouse.active()) return true;
+        if (e.getPointerId(e.getActionIndex()) != 0) return true;
         // The Board reported touches of its own at the top-left pixels every
-        // few seconds to the web app; they are not a player's.
-        if (e.getActionMasked() == MotionEvent.ACTION_DOWN && e.getX() < 8 && e.getY() < 12) return true;
+        // few seconds to the web app; they are not a player's. A piece set
+        // down touches the screen too (PieceStick).
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN)
+            pieceTouch = (e.getX() < 8 && e.getY() < 12) || PieceStick.nearPiece(e.getX(), e.getY());
+        if (pieceTouch) return true;
         final int[] p = game(e.getX(), e.getY());
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
