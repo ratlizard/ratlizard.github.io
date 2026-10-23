@@ -7,6 +7,7 @@ import { BoardContactPhase } from "@board.fun/web-sdk";
 export function startProbe(Board, { show = true } = {}) {
   const seen = { pointerdown: 0, touchstart: 0, mousedown: 0, click: 0, keydown: 0, boardBegan: 0 };
   const facts = {};
+  window.__boardFacts = facts; // board_check.mjs reads them here, box or no box
   const box = document.createElement("pre");
   box.id = "boardprobe";
   box.style.cssText =
@@ -14,7 +15,7 @@ export function startProbe(Board, { show = true } = {}) {
     "font:12px/1.35 ui-monospace,monospace;color:#f0ede4;background:rgba(0,0,0,.7);" +
     "pointer-events:none;white-space:pre;max-width:46vw;overflow:hidden";
 
-  function show() {
+  function draw() {
     const lines = Object.entries(facts).map(([k, v]) => `${k}: ${v}`);
     lines.push("events: " + Object.entries(seen).map(([k, v]) => `${k} ${v}`).join(", "));
     box.textContent = lines.join("\n");
@@ -22,7 +23,7 @@ export function startProbe(Board, { show = true } = {}) {
   function fact(k, v) {
     facts[k] = v;
     console.log(`[board-probe] ${k}: ${v}`);
-    show();
+    draw();
   }
 
   for (const type of ["pointerdown", "touchstart", "mousedown", "click", "keydown"]) {
@@ -33,7 +34,7 @@ export function startProbe(Board, { show = true } = {}) {
         const trusted = e.isTrusted ? "" : " (replayed)";
         console.log(`[board-probe] ${type}${where}${type === "keydown" ? " " + e.key : ""}${trusted}`);
       }
-      show();
+      draw();
     }, { capture: true, passive: true });
   }
 
@@ -89,8 +90,14 @@ export function startProbe(Board, { show = true } = {}) {
     navigator.storage.estimate().then((q) => fact("storage quota MB", Math.round(q.quota / 1e6)));
   }
 
-  if (show) document.body.appendChild(box);
-  show();
+  // With the show option set, the box is on the page except while the game
+  // plays (the body class "playing").
+  if (show) {
+    document.body.appendChild(box);
+    const hide = () => { box.style.display = document.body.classList.contains("playing") ? "none" : ""; };
+    new MutationObserver(hide).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
+  draw();
 
   return {
     fact,
@@ -99,7 +106,7 @@ export function startProbe(Board, { show = true } = {}) {
         if (c.phase !== BoardContactPhase.Began) continue;
         seen.boardBegan++;
         if (seen.boardBegan <= 3) console.log(`[board-probe] board contact began at ${c.x},${c.y} glyph ${c.glyphId}`);
-        show();
+        draw();
       }
     },
   };

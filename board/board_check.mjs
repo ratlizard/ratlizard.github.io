@@ -131,7 +131,7 @@ const centre = el => run(`(() => { const r = (${el}).getBoundingClientRect();
 const tapOn = async sel => tap(...await centre(`document.querySelector(${JSON.stringify(sel)})`));
 const tapKey = async label => tap(...await centre(`[...document.querySelectorAll('#keys .k')].find(k => k.textContent === ${JSON.stringify(label)})`));
 const shown = sel => run(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); return !!e && !e.hidden; })()`);
-const probeFact = k => run(`document.getElementById('boardprobe').textContent.match(/^${k}: (.*)$/m)?.[1]`);
+const probeFact = k => run(`window.__boardFacts?.[${JSON.stringify(k)}]`);
 
 // ---- touch -----------------------------------------------------------------
 await open();
@@ -145,6 +145,10 @@ const size = await run(`(() => { const c = document.getElementById('screen'), r 
   return [c.width, c.height, Math.round(r.width * devicePixelRatio), Math.round(r.height * devicePixelRatio), s.clientWidth, s.clientHeight]; })()`);
 check(size[0] === size[4] && size[1] === size[5] && size[0] === size[2] && size[1] === size[3],
   `the game is the stage's ${size[4]}x${size[5]}, drawn one to one`, `the game ${size[0]}x${size[1]}, drawn at ${size[2]}x${size[3]}, stage ${size[4]}x${size[5]}`);
+check(await run(`!document.getElementById('boardprobe')`), 'a build without REMOTE puts no probe box on the page', 'the box is there');
+// Cythera's bottom panels start at about 934 px of the panel's 1080.
+const padBottoms = await run(`[...document.querySelectorAll('#move, #act')].map(p => Math.round(p.getBoundingClientRect().bottom))`);
+check(padBottoms.length === 2 && padBottoms.every(b => b > 0 && b <= 925), 'the pads end above the game\'s bottom panels', padBottoms.join(','));
 const how = await probeFact('touch');
 check(how === 'replayed from Board.input', 'the adapter settled on replaying fingers', String(how));
 await tap(W - 40, 20);

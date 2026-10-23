@@ -55,6 +55,14 @@ window.boardScreen = (vw, vh) => [
 document.body.classList.add("touch");
 addKeyboard();
 
+// At the Board's size Cythera's message and party panels run along the
+// bottom edge, their top at about 934 px of the 1080 (measured on the Board,
+// 23 October 2026), so the pads stand 160 px up, clear of them. A drag on a
+// pad's title still moves it anywhere.
+const padRoom = document.createElement("style");
+padRoom.textContent = "body #move, body #act { bottom: 160px; }";
+document.head.appendChild(padRoom);
+
 // REMOTE_URL is set by pack.sh: null, or the address of remote_server.mjs
 // for a test build.
 if (REMOTE_URL) startRemote(REMOTE_URL, probe.fact);
