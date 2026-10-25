@@ -69,10 +69,15 @@ final class Saves {
             if (names != null) for (String name : names) {
                 String at = "seed/" + name + "/";
                 JSONObject md = new JSONObject(new String(Emulator.readAll(context.getAssets().open(at + "metadata.json")), "UTF-8"));
-                Native.importFile(folder + name, (int) md.getLong("file_type"), (int) md.getLong("creator"),
-                    md.getInt("finder_flags"), (int) md.getLong("created_date"), (int) md.getLong("modified_date"),
-                    Emulator.readAll(context.getAssets().open(at + "data.fork")),
-                    Emulator.readAll(context.getAssets().open(at + "resource.fork")));
+                int[] info = { (int) md.getLong("file_type"), (int) md.getLong("creator"),
+                    md.getInt("finder_flags"), (int) md.getLong("created_date"), (int) md.getLong("modified_date") };
+                byte[] data = Emulator.readAll(context.getAssets().open(at + "data.fork"));
+                byte[] rsrc = Emulator.readAll(context.getAssets().open(at + "resource.fork"));
+                Native.importFile(folder + name, info[0], info[1], info[2], info[3], info[4], data, rsrc);
+                // The module counts an imported file as stored, and the scan
+                // writes only what the game changes: kept here, the character
+                // is restored at the next launch, when it is not seeded again.
+                if (!write(folder + name, info, data, rsrc)) return n;
                 n++;
             }
             done.createNewFile();
@@ -87,20 +92,25 @@ final class Saves {
         for (int i = 0; i < count; i++) {
             String path = Native.savePath(i);
             int[] info = Native.saveInfo(i);
-            byte[] data = Native.saveData(i), rsrc = Native.saveRsrc(i);
-            File tmp = new File(dir, "writing"), out = new File(dir, fileName(path));
-            try (DataOutputStream o = new DataOutputStream(new FileOutputStream(tmp))) {
-                o.writeUTF(path);
-                for (int v : info) o.writeInt(v);
-                o.writeInt(data.length); o.write(data);
-                o.writeInt(rsrc.length); o.write(rsrc);
-            } catch (IOException e) {
-                Log.w(TAG, "save " + path + " not written: " + e);
-                return;
-            }
-            if (!tmp.renameTo(out)) { Log.w(TAG, "save " + path + " not renamed"); return; }
-            Log.i(TAG, "saved " + path + " (" + data.length + " + " + rsrc.length + " bytes)");
+            if (!write(path, info, Native.saveData(i), Native.saveRsrc(i))) return;
         }
         if (count > 0) Native.saveAck();
+    }
+
+    /** One file into saves/: path, type, creator, Finder flags, dates, then both forks. */
+    boolean write(String path, int[] info, byte[] data, byte[] rsrc) {
+        File tmp = new File(dir, "writing"), out = new File(dir, fileName(path));
+        try (DataOutputStream o = new DataOutputStream(new FileOutputStream(tmp))) {
+            o.writeUTF(path);
+            for (int v : info) o.writeInt(v);
+            o.writeInt(data.length); o.write(data);
+            o.writeInt(rsrc.length); o.write(rsrc);
+        } catch (IOException e) {
+            Log.w(TAG, "save " + path + " not written: " + e);
+            return false;
+        }
+        if (!tmp.renameTo(out)) { Log.w(TAG, "save " + path + " not renamed"); return false; }
+        Log.i(TAG, "saved " + path + " (" + data.length + " + " + rsrc.length + " bytes)");
+        return true;
     }
 }

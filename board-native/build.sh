@@ -9,6 +9,12 @@
 #
 #   GAME   the Cythera archive the app boots (default: cythera-reference's
 #          installed folder, as board/pack.sh)
+#   APP    a folder holding the program patched by grimoire's
+#          utilities/app_patch.mjs, Cythera.data and Cythera.rsrc, booted in
+#          place of the archive's (default ~/e-z-g-cythera/patches/app-walk-to,
+#          made by `node utilities/app_patch.mjs ../cythera-reference/game/Cythera.hqx
+#          ../patches/app-walk-to --only walk-to` in grimoire; APP= boots the
+#          program unpatched)
 #   TUNES  the pre-rendered tunes, as board/pack.sh (default tune-library-qt/)
 #   AAR    the Board SDK's board.aar, unzipped (default the one in
 #          e-z-g-disassembly's reference/carmen-time/board/aar)
@@ -25,6 +31,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo="$here/.."
 GAME=${GAME-"$repo/../cythera-reference/game/installed-folders/Cythera Installed Folder.sit"}
 TUNES=${TUNES-"$HOME/e-z-g-cythera/tune-library-qt"}
+APP=${APP-"$HOME/e-z-g-cythera/patches/app-walk-to"}
 AAR=${AAR:-$HOME/e-z-g-disassembly/reference/carmen-time/board/aar}
 cache="$here/.cache"
 mkdir -p "$cache"
@@ -50,7 +57,15 @@ work="$cache/build"; rm -rf "$work"; mkdir -p "$work/classes" "$work/dex" "$work
 
 "$JAVA_HOME/bin/javac" --release 8 -nowarn -classpath "$JAR:$AAR/classes.jar" -d "$work/classes" $(find "$here/src" -name '*.java') > "$work/javac.log" 2>&1 || { cat "$work/javac.log"; exit 1; }
 "$BT/d8" --release --min-api 29 --lib "$JAR" --output "$work/dex" $(find "$work/classes" -name '*.class') "$AAR/classes.jar" 2>&1 | grep -v -E "^Warning|Missing class|is not found|^ *$" || true
-cp -L "$GAME" "$work/assets/game.sit"
+if [ -n "$APP" ]; then
+  # The archive as the fork's web pack, with the patched program's forks in
+  # place of the program's (swap_program.py); load_game reads either.
+  (cd "$repo/cythera-web" && PATH="$TC/bin:$PATH" CARGO_TARGET_DIR="$target" CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4} \
+    "$TC/bin/cargo" run -q --release --example pack_game -- "$GAME" "$work/game.kpk")
+  python3 "$here/swap_program.py" "$work/game.kpk" "$APP" "$work/assets/game.sit"
+else
+  cp -L "$GAME" "$work/assets/game.sit"
+fi
 cp "$AAR/../models/chop_chop_v1.3.0.tflite" "$work/assets/"   # PieceStick.java
 [ -z "$TUNES" ] || cp "$TUNES"/*.wav "$work/assets/tunes/"
 if [ -n "${SEED-}" ]; then
