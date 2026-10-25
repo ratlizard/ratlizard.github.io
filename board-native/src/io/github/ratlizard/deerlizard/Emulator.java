@@ -59,7 +59,9 @@ final class Emulator extends Thread {
         long t0 = SystemClock.uptimeMillis();
         byte[] archive = readAll(context.getAssets().open("game.sit"));
         int epoch = (int) (System.currentTimeMillis() / 1000 + MAC_EPOCH_OFFSET);
-        if (Native.load(archive, epoch, width, height, true) != 0) throw new IOException("load: " + Native.error());
+        boolean powerpc = !new String(readAll(context.getAssets().open("cpu")), "UTF-8").trim().equals("68k");
+        Log.i(TAG, powerpc ? "the PowerPC program" : "the 68K program");
+        if (Native.load(archive, epoch, width, height, powerpc) != 0) throw new IOException("load: " + Native.error());
         archive = null;
         int restored = saves.restore();
         int seeded = saves.seed(Native.gameFolder());

@@ -23,6 +23,8 @@
 #          folder as character NAME the first time the app starts
 #   REMOTE a test build: the port for taps and keys sent from this
 #          computer (Remote.java)
+#   CPU    ppc (default), the PowerPC program on the fork's interpreter, or
+#          68k, the 68K program with the fork's JIT (JIT=0: without it)
 #   KEYSTORE  the signing key; an installed app is updated only with the key
 #          it was signed with (default .cache/deerlizard.keystore, made once)
 #
@@ -48,10 +50,21 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
 # supplies on the web. Cargo writes each target under a folder named for it,
 # so this build and the player's share the main checkout's target directory.
 target=${CARGO_TARGET_DIR:-$HOME/e-z-g-cythera/ratlizard.github.io/target}
+CPU=${CPU:-ppc}
+set --
+if [ "$CPU" = 68k ] && [ "${JIT:-1}" = 1 ]; then
+  # The 68K program with the fork's JIT. m68k 0.14.6, the version the
+  # fork's lock file names, has upstream's fix for the RTS fault that
+  # m68k-patched/ was made for (its changelog: "bare RTS/RTD becomes a
+  # dynamic-exit trace terminal"), so the published crate is used. This
+  # build's cache goes in a separate target folder.
+  set -- --features jit
+  target="$target/board-68k"
+fi
 (cd "$repo/cythera-web" && PATH="$TC/bin:$PATH" RUSTC="$TC/bin/rustc" \
   CC_aarch64_linux_android="$CC" CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC" \
   CARGO_TARGET_DIR="$target" CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4} \
-  "$TC/bin/cargo" rustc --release --target aarch64-linux-android --crate-type staticlib)
+  "$TC/bin/cargo" rustc --release --target aarch64-linux-android "$@" --crate-type staticlib)
 work="$cache/build"; rm -rf "$work"; mkdir -p "$work/classes" "$work/dex" "$work/assets/tunes" "$work/stage/lib/arm64-v8a"
 "$CC" -shared -fPIC -O2 -o "$work/stage/lib/arm64-v8a/libdeerlizard.so" "$here/jni.c" \
   "$target/aarch64-linux-android/release/libcythera_web.a" -landroid -llog -lm -ldl -Wl,--gc-sections
@@ -75,6 +88,7 @@ if [ -n "${SEED-}" ]; then
   mkdir -p "$work/assets/seed/${SEED%%=*}"
   cp "${SEED#*=}/metadata.json" "${SEED#*=}/data.fork" "${SEED#*=}/resource.fork" "$work/assets/seed/${SEED%%=*}/"
 fi
+echo "$CPU" > "$work/assets/cpu"   # Emulator.boot: which program to run
 [ -z "${REMOTE-}" ] || { echo "$REMOTE" > "$work/assets/remote"; echo "build.sh: a test build, with commands on port $REMOTE"; }
 "$BT/aapt2" link -o "$work/base.apk" --manifest "$here/AndroidManifest.xml" -I "$JAR" -A "$work/assets" -0 sit -0 wav
 cp "$AAR/jni/arm64-v8a/libboard.so" "$AAR/jni/arm64-v8a/libtensorflowlite.so" "$work/stage/lib/arm64-v8a/"

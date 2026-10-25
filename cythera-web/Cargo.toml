@@ -14,6 +14,12 @@ crate-type = ["cdylib"]
 # how upstream's own browser builds run.
 systemless = { path = "../../wolflizard", default-features = false }
 
+[features]
+# The Board app's 68K build (board-native/build.sh, CPU=68k): the fork's
+# Cranelift JIT for hot 68K traces, which a native library may use and a
+# browser's WebAssembly may not.
+jit = ["systemless/jit"]
+
 [profile.release]
 opt-level = 3
 lto = "fat"
