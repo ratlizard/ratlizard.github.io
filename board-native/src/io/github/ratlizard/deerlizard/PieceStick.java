@@ -17,8 +17,11 @@ import co.harrishill.board.touch.tracking.TrackerParameters;
  * The Chop Chop pieces as Cythera's controls, as the SheepShaver Cythera app
  * has them (e-z-g-disassembly, branch worktree-cythera-board,
  * tools/sheepshaver-board/PieceStick.java), with the game's keys in place of
- * SDL's. Glyphs are the Chop Chop model's, as the Unity SDK's simulator
- * icons number them: spoon 0, sponge 1, spice mill 2, knife 3, little chef 4.
+ * SDL's. Glyphs are the Chop Chop model's: knife 0, spoon 1, sponge 2,
+ * spice mill 3, little chef 4. The order of the Unity SDK's simulator icons
+ * (spoon 0, sponge 1, mill 2, knife 3) is not the model's; that order, set
+ * down on the Board on 25 October 2026, made the knife Use, the spoon Take,
+ * the sponge the joystick and the mill Attack.
  *
  * The spice mill is a joystick on the numeric keypad. Where it is set down is
  * the centre. Pushed further than ENTER pixels from there, it holds down the
@@ -50,7 +53,7 @@ import co.harrishill.board.touch.tracking.TrackerParameters;
 final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     static final String TAG = MainActivity.TAG;
     static final String MODEL = "chop_chop_v1.3.0.tflite";
-    static final int MILL = 2;
+    static final int MILL = 3;
     /** Display pixels from the centre to press a direction, and to let it go (the Board is about 92 per inch). */
     static final float ENTER = 40, LEAVE = 28;
     /** Degrees past an octant's edge before the held direction changes. */
@@ -71,9 +74,9 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     /** Glyph: the Mac key code and character of its command letter. */
     static final java.util.Map<Integer, int[]> ACTIONS = new java.util.HashMap<>();
     static {
-        ACTIONS.put(3, new int[] { 0x00, 'a' });   // knife: attack
-        ACTIONS.put(0, new int[] { 0x20, 'u' });   // spoon: use
-        ACTIONS.put(1, new int[] { 0x05, 'g' });   // sponge: take
+        ACTIONS.put(0, new int[] { 0x00, 'a' });   // knife: attack
+        ACTIONS.put(1, new int[] { 0x20, 'u' });   // spoon: use
+        ACTIONS.put(2, new int[] { 0x05, 'g' });   // sponge: take
         ACTIONS.put(4, new int[] { 0x11, 't' });   // little chef: talk
     }
 
@@ -152,7 +155,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     void act(BoardContactEvent c) {
         final int[] key = ACTIONS.get(c.glyphId);
         final int[] p = activity.game(c.positionX, c.positionY);
-        Log.i(TAG, String.format("[piece] glyph %d at %.0f,%.0f: %c and a click", c.glyphId, c.positionX, c.positionY, (char) key[1]));
+        Events.note(String.format("[piece] glyph %d at %.0f,%.0f: %c and a click", c.glyphId, c.positionX, c.positionY, (char) key[1]));
         new Thread(() -> {
             Emulator emu = activity.emulator;
             press(key);
@@ -168,7 +171,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
         BoardContactEvent mine = null;
         for (BoardContactEvent c : contacts) {
             if (c.phaseId == BoardContactEvent.BC_PHASE_BEGAN || gone(c))
-                Log.i(TAG, String.format("[contact] %d %s: type %d glyph %d at %.0f,%.0f facing %.0f",
+                Events.note(String.format("[contact] %d %s: type %d glyph %d at %.0f,%.0f facing %.0f",
                     c.contactId, gone(c) ? "off" : "on", c.typeId, c.glyphId, c.positionX, c.positionY, c.orientation));
             if (c.typeId != BoardContactEvent.BC_TYPE_GLYPH || c.glyphId < 0) continue;
             if (!gone(c)) mark(c.positionX, c.positionY);
@@ -179,7 +182,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
             if (!gone(c) && c.contactId != stick && !steady(c)) continue;
             if (!seen.get(c.glyphId)) {
                 seen.set(c.glyphId);
-                Log.i(TAG, "[piece] first seen: glyph " + c.glyphId + (c.glyphId == MILL ? " (the joystick)"
+                Events.note("[piece] first seen: glyph " + c.glyphId + (c.glyphId == MILL ? " (the joystick)"
                     : ACTIONS.containsKey(c.glyphId) ? " (an action)" : " (ignored)"));
             }
             if (ACTIONS.containsKey(c.glyphId)) {
@@ -195,7 +198,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
             if (gone(mine)) return;
             stick = mine.contactId; cx = mine.positionX; cy = mine.positionY;
             facing = mine.orientation; turned = 0;
-            Log.i(TAG, String.format("[piece] mill down at %.0f,%.0f", cx, cy));
+            Events.note(String.format("[piece] mill down at %.0f,%.0f", cx, cy));
             return;
         }
         if (gone(mine)) { release(); stick = -1; return; }
@@ -208,7 +211,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
             turned += step;
             if (Math.abs(turned) >= TURN) {
                 turned -= Math.signum(turned) * TURN;
-                Log.i(TAG, "[piece] mill turned: keypad 5");
+                Events.note("[piece] mill turned: keypad 5");
                 new Thread(() -> press(KEYPAD_5), "piece-turn").start();
             }
             return;

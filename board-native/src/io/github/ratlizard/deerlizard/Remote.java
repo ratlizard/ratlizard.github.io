@@ -17,6 +17,7 @@ import java.net.Socket;
  *   move X Y / down X Y / up X Y
  *   key CODE CHAR    a Mac key code and character code, pressed for 120 ms
  *   stat             the last second's figures
+ *   events           the last piece and touch lines (Events)
  * Each line is answered "ok", the figures, or "? LINE".
  */
 final class Remote extends Thread {
@@ -53,6 +54,7 @@ final class Remote extends Thread {
         try {
             switch (w[0]) {
                 case "stat": return emu.status;
+                case "events": return Events.all();
                 case "key": {
                     final int code = Integer.decode(w[1]), ch = Integer.decode(w[2]);
                     emu.post(() -> Native.keyDown(code, ch));

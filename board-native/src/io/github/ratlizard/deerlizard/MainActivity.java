@@ -32,8 +32,13 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         DisplayMetrics m = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getRealMetrics(m);
-        int w = Math.min(2048, Math.max(640, Math.max(m.widthPixels, m.heightPixels)));
-        int h = Math.min(2048, Math.max(480, Math.min(m.widthPixels, m.heightPixels)));
+        // The game's screen is 480 high, the least it runs at, and as wide as
+        // the display's shape: 853 on the Board's 1920x1080. The compositor
+        // scales it up, so a map square is big enough to set a piece on;
+        // at the display's full size a square was smaller than a piece.
+        int dw = Math.max(m.widthPixels, m.heightPixels), dh = Math.min(m.widthPixels, m.heightPixels);
+        int h = 480;
+        int w = Math.max(640, Math.round(dw * 480f / dh)) & ~1;
         emulator = new Emulator(this, w, h);
         view = new SurfaceView(this);
         setContentView(view);
@@ -66,8 +71,11 @@ public class MainActivity extends Activity {
         // The Board reported touches of its own at the top-left pixels every
         // few seconds to the web app; they are not a player's. A piece set
         // down touches the screen too (PieceStick).
-        if (e.getActionMasked() == MotionEvent.ACTION_DOWN)
+        if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
             pieceTouch = (e.getX() < 8 && e.getY() < 12) || PieceStick.nearPiece(e.getX(), e.getY());
+            Events.note(String.format("[touch] down at %.0f,%.0f, size %.2f, major %.0f%s", e.getX(), e.getY(),
+                e.getSize(), e.getTouchMajor(), pieceTouch ? ", dropped as a piece's" : ""));
+        }
         if (pieceTouch) return true;
         final int[] p = game(e.getX(), e.getY());
         switch (e.getActionMasked()) {
