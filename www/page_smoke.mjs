@@ -4,7 +4,9 @@
 // catch it. Usage: node page_smoke.mjs
 import { readFileSync } from 'node:fs';
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+// Every inline block, in order and in one scope, as the page runs them:
+// Carmen mode's block follows the main one, after a <style>.
+const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
 const ids = [...html.matchAll(/ id="([^"]+)"/g)].map(m => m[1]);
 const el = id => ({ id, style: { setProperty() {}, removeProperty() {} }, dataset: {}, classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
   addEventListener() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0, width: 640, height: 480 }; },

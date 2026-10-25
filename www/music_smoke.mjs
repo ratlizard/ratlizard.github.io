@@ -125,7 +125,7 @@ console.log(`ok: the zip reader returned ${entries.length} tune files, stored an
 // --- the module: does an installed tune actually change what is played?
 const wasmBytes = readFileSync(new URL('./cythera_web.wasm', import.meta.url));
 let mem;
-const env = { cw_log: (p, n) => { const m = dec.decode(new Uint8Array(mem.buffer, p, n)); if (m.startsWith('[TUNE]')) console.log(' ', m); } };
+const env = { cw_host_lazy_fetch: () => 0, cw_log: (p, n) => { const m = dec.decode(new Uint8Array(mem.buffer, p, n)); if (m.startsWith('[TUNE]')) console.log(' ', m); } };
 const game = readFileSync(archivePath);
 
 async function themeAudio(install) {

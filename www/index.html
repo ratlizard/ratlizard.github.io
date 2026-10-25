@@ -247,6 +247,10 @@ function say(s) { logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollH
 const dec = new TextDecoder();
 let wasm, mem;
 let logCalls = 0;
+// The Carmen test build (board/pack.sh with LAZY) sets window.CARMEN before
+// this script. Everything else Carmen mode changes waits on it, so without it
+// the live player runs Cythera unchanged.
+const CARMEN = !!window.CARMEN;
 const env = { cw_log(p, n) { logCalls++; say(dec.decode(new Uint8Array(mem.buffer, p, n))); },
   // Lazy CD files (Carmen test build): the module asks for one when the game
   // first reads it, mid-instruction, so the fetch is synchronous. A
@@ -480,7 +484,7 @@ function chooseScreen() {
   if (q.get('w') && q.get('h')) return [Math.max(640, +q.get('w')), Math.max(480, +q.get('h'))];
   // Carmen: the game's own 640x480, so its picture fills the screen with no
   // border (it hides the Mac menu bar at that size).
-  return [640, 480];
+  if (CARMEN) return [640, 480];
   const body = document.body.getBoundingClientRect(), bar = document.getElementById('bar').getBoundingClientRect();
   const stage = document.getElementById('stage');
   const insetX = stage.offsetWidth - stage.clientWidth, insetY = stage.offsetHeight - stage.clientHeight;
@@ -2475,7 +2479,7 @@ function mouseUpAt(v, h) {
   if (pendingUp) clearTimeout(pendingUp);
   const release = () => {
     const wait = downAt + MIN_HOLD_MS - performance.now();
-    if (wait > 0 || wasm.cw_tick() < downTick + MIN_HOLD_TICKS) {
+    if (wait > 0 || (CARMEN && wasm.cw_tick() < downTick + MIN_HOLD_TICKS)) {
       pendingUp = setTimeout(release, Math.max(16, wait));
       return;
     }
@@ -2740,6 +2744,7 @@ body.carmen #stage { position: fixed; inset: 0; }
 // signs in as "sam" and presses PLAY GAME, for unattended tests; it logs
 // speed, heap and lazy-file figures every 5 s either way.
 (function () {
+  if (!CARMEN) return;
   const t0 = performance.now();
   const q = new URLSearchParams(location.search);
   const log = s => console.log('[carmen] ' + s);

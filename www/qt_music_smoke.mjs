@@ -36,7 +36,7 @@ const GAME_TUNES = vm.runInThisContext('(' + page.slice(tunesFrom + 'const GAME_
 const wasmBytes = readFileSync(here('cythera_web.wasm'));
 const dec = new TextDecoder(), enc = new TextEncoder();
 let mem;
-const env = { cw_log: (p, n) => { const m = dec.decode(new Uint8Array(mem.buffer, p, n)); if (m.startsWith('[TUNE]')) console.log(' ', m); } };
+const env = { cw_host_lazy_fetch: () => 0, cw_log: (p, n) => { const m = dec.decode(new Uint8Array(mem.buffer, p, n)); if (m.startsWith('[TUNE]')) console.log(' ', m); } };
 const game = readFileSync(archivePath);
 async function boot() {
   const { instance } = await WebAssembly.instantiate(wasmBytes, { env });

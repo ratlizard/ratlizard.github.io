@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 const wasmBytes = readFileSync(new URL('./cythera_web.wasm', import.meta.url));
 let mem; const dec = new TextDecoder();
-const env = { cw_log: (p, n) => console.log('[wasm]', dec.decode(new Uint8Array(mem.buffer, p, n))) };
+const env = { cw_host_lazy_fetch: () => 0, cw_log: (p, n) => console.log('[wasm]', dec.decode(new Uint8Array(mem.buffer, p, n))) };
 const { instance } = await WebAssembly.instantiate(wasmBytes, { env });
 const w = instance.exports; mem = w.memory; w.cw_init();
 const game = readFileSync(process.argv[2]);

@@ -14,7 +14,7 @@ const [,, archivePath, secsArg, out, midiPath] = process.argv;
 const SECS = Number(secsArg);
 const wasmBytes = readFileSync(new URL('./cythera_web.wasm', import.meta.url));
 let mem; const dec = new TextDecoder();
-const env = { cw_log: (p, n) => { const m = dec.decode(new Uint8Array(mem.buffer, p, n)); if (!m.startsWith('[TRAP]')) process.stderr.write('[wasm] ' + m + '\n'); } };
+const env = { cw_host_lazy_fetch: () => 0, cw_log: (p, n) => { const m = dec.decode(new Uint8Array(mem.buffer, p, n)); if (!m.startsWith('[TRAP]')) process.stderr.write('[wasm] ' + m + '\n'); } };
 const { instance } = await WebAssembly.instantiate(wasmBytes, { env });
 const w = instance.exports; mem = w.memory; w.cw_init();
 const game = readFileSync(archivePath);

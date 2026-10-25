@@ -82,8 +82,12 @@ screen_hook='s#^  const vh = Math.max(1, Math.round(body.height - bar.height - i
   if (window.boardScreen) return window.boardScreen(vw, vh);#'
 qt_url='s#^const QT_INSTALLER_URL = .*#const QT_INSTALLER_URL = '"'QUICKTIM.EXE'"';#'
 [ -n "$QT" ] || qt_url=''
+# With LAZY, window.CARMEN turns on Carmen mode in the page (www/index.html).
+carmen_flag=''
+[ -z "${LAZY-}" ] || carmen_flag='s#<script src="board.js"></script>#<script>window.CARMEN = true;</script>\n&#'
 sed -e 's#<script src="delv/mac-bytes.js"></script>#<script src="board.js"></script>\n&#' \
-  -e "$screen_hook" -e "$qt_url" -e "$tunes_hook" "$www/index.html" > dist/index.html
+  -e "$screen_hook" -e "$qt_url" -e "$tunes_hook" "$www/index.html" | sed -e "$carmen_flag" > dist/index.html
+[ -z "${LAZY-}" ] || grep -q "window.CARMEN = true" dist/index.html
 grep -q 'src="board.js"' dist/index.html
 grep -q "window.boardScreen(vw, vh)" dist/index.html
 [ "$tunes" = false ] || grep -q "window.boardTunes" dist/index.html
