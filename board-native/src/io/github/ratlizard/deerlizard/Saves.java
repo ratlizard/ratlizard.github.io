@@ -37,21 +37,24 @@ final class Saves {
 
     int restore() {
         int n = 0;
+        byte[] prefs = null;
+        int[] prefsInfo = null;
         File[] files = dir.listFiles();
-        if (files == null) return 0;
-        for (File f : files) {
+        if (files != null) for (File f : files) {
             if (!f.getName().endsWith(".sav")) continue;
             try (DataInputStream in = new DataInputStream(new FileInputStream(f))) {
                 String path = in.readUTF();
                 int type = in.readInt(), creator = in.readInt(), flags = in.readInt(), created = in.readInt(), modified = in.readInt();
                 byte[] data = new byte[in.readInt()]; in.readFully(data);
                 byte[] rsrc = new byte[in.readInt()]; in.readFully(rsrc);
-                Native.importFile(path, type, creator, flags, created, modified, data, rsrc);
                 n++;
+                if (path.equals(Prefs.PATH)) { prefs = rsrc; prefsInfo = new int[] { type, creator, flags, created, modified }; continue; }
+                Native.importFile(path, type, creator, flags, created, modified, data, rsrc);
             } catch (IOException e) {
                 Log.w(TAG, "save " + f.getName() + " not restored: " + e);
             }
         }
+        Prefs.apply(context, prefs, prefsInfo);
         return n;
     }
 

@@ -26,22 +26,27 @@ public class MainActivity extends Activity {
 
     Emulator emulator;
     SurfaceView view;
+    MillRing ring;   // drawn over the game while the spice mill is down
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         DisplayMetrics m = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getRealMetrics(m);
-        // The game's screen is 480 high, the least it runs at, and as wide as
-        // the display's shape: 853 on the Board's 1920x1080. The compositor
-        // scales it up, so a map square is big enough to set a piece on;
-        // at the display's full size a square was smaller than a piece.
+        // The game's screen is 540 high and as wide as the display's shape:
+        // 960 on the Board's 1920x1080, scaled up twice. At the display's
+        // full size a map square was smaller than a piece; at 480 high the
+        // windows left too little room (the maintainer, 25 October 2026).
         int dw = Math.max(m.widthPixels, m.heightPixels), dh = Math.min(m.widthPixels, m.heightPixels);
-        int h = 480;
-        int w = Math.max(640, Math.round(dw * 480f / dh)) & ~1;
+        int h = 540;
+        int w = Math.max(640, Math.round(dw * (float) h / dh)) & ~1;
         emulator = new Emulator(this, w, h);
         view = new SurfaceView(this);
-        setContentView(view);
+        ring = new MillRing(this);
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        frame.addView(view);
+        frame.addView(ring);
+        setContentView(frame);
         hideSystemBars();
         view.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override public void surfaceCreated(SurfaceHolder holder) { emulator.setSurface(holder.getSurface()); }

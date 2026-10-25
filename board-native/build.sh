@@ -68,6 +68,8 @@ else
   cp -L "$GAME" "$work/assets/game.sit"
 fi
 cp "$AAR/../models/chop_chop_v1.3.0.tflite" "$work/assets/"   # PieceStick.java
+mkdir -p "$work/assets/prefs"   # Prefs.java: a preferences file the game wrote
+cp "$repo/../cythera-workbench/tools/drive-scripts/fixtures/System Folder/Preferences/Cythera Preferences/resource.fork" "$work/assets/prefs/"
 [ -z "$TUNES" ] || cp "$TUNES"/*.wav "$work/assets/tunes/"
 if [ -n "${SEED-}" ]; then
   mkdir -p "$work/assets/seed/${SEED%%=*}"
