@@ -11,9 +11,10 @@
 #          installed folder, as board/pack.sh)
 #   APP    a folder holding the program patched by grimoire's
 #          utilities/app_patch.mjs, Cythera.data and Cythera.rsrc, booted in
-#          place of the archive's (default ~/e-z-g-cythera/patches/app-walk-to,
+#          place of the archive's (default ~/e-z-g-cythera/patches/app-walk-path,
 #          made by `node utilities/app_patch.mjs ../cythera-reference/game/Cythera.hqx
-#          ../patches/app-walk-to --only walk-to` in grimoire; APP= boots the
+#          ../patches/app-walk-path --only walk-to,walk-path` in grimoire: a
+#          piece's command walks the hero to its target; APP= boots the
 #          program unpatched)
 #   TUNES  the pre-rendered tunes, as board/pack.sh (default tune-library-qt/)
 #   AAR    the Board SDK's board.aar, unzipped (default the one in
@@ -31,7 +32,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo="$here/.."
 GAME=${GAME-"$repo/../cythera-reference/game/installed-folders/Cythera Installed Folder.sit"}
 TUNES=${TUNES-"$HOME/e-z-g-cythera/tune-library-qt"}
-APP=${APP-"$HOME/e-z-g-cythera/patches/app-walk-to"}
+APP=${APP-"$HOME/e-z-g-cythera/patches/app-walk-path"}
 AAR=${AAR:-$HOME/e-z-g-disassembly/reference/carmen-time/board/aar}
 cache="$here/.cache"
 mkdir -p "$cache"
