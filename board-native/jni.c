@@ -1,11 +1,14 @@
 // The module's C interface (cythera-web/src/lib.rs) for the Java activity:
-// one JNI function for each call the activity makes, the frame drawn
-// straight into the window, and cw_log to the Android log. The module's
-// state is thread-local, so every call comes from the activity's emulator
-// thread.
+// one JNI function for each call the activity makes, the frame handed to a
+// thread that posts it to the window, and cw_log to the Android log. The
+// module's state is thread-local, so every call comes from the activity's
+// emulator thread.
 #include <jni.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <pthread.h>
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
@@ -168,17 +171,83 @@ FN(jint, audioDrain)(JNIEnv *env, jclass c, jbyteArray out) {
     return (jint)len;
 }
 
+// The window is posted from a thread of its own. Locking a window buffer
+// waits for the display to free one, and on the Board that wait was a large and
+// uneven part of every second, taken from the thread that runs the game. The
+// emulator thread renders the screen and keeps the newest frame for the
+// presenter to post; a frame that matches the last one kept is not handed over.
 static ANativeWindow *window;
+static pthread_mutex_t window_lock = PTHREAD_MUTEX_INITIALIZER;   // window, and its buffer while posting
+static pthread_mutex_t frame_lock = PTHREAD_MUTEX_INITIALIZER;    // frame, frame_size, frame_w, frame_h, dirty
+static pthread_cond_t frame_ready = PTHREAD_COND_INITIALIZER;
+static uint8_t *frame;
+static size_t frame_size;
+static uint32_t frame_w, frame_h;
+static int dirty;
+static int presenter_started;
+
+static uint32_t clock_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint32_t)(t.tv_sec * 1000u + t.tv_nsec / 1000000u);
+}
+
+static void *presenter(void *unused) {
+    uint32_t window_start = clock_ms(), posted = 0, wait_ms = 0, copy_ms = 0;
+    for (;;) {
+        pthread_mutex_lock(&frame_lock);
+        while (!dirty) pthread_cond_wait(&frame_ready, &frame_lock);
+        pthread_mutex_unlock(&frame_lock);
+        pthread_mutex_lock(&window_lock);
+        ANativeWindow_Buffer buf;
+        uint32_t t0 = clock_ms();
+        if (window && ANativeWindow_lock(window, &buf, NULL) == 0) {
+            uint32_t t1 = clock_ms();
+            pthread_mutex_lock(&frame_lock);
+            dirty = 0;
+            // The module's state belongs to the emulator thread, so the size
+            // is the one present() stored with the frame.
+            uint32_t w = frame_w, h = frame_h;
+            if (frame && frame_size == (size_t)w * h * 4) {
+                uint32_t rows = h < (uint32_t)buf.height ? h : (uint32_t)buf.height;
+                uint32_t cols = w < (uint32_t)buf.width ? w : (uint32_t)buf.width;
+                for (uint32_t y = 0; y < rows; y++)
+                    memcpy((uint8_t *)buf.bits + (size_t)y * buf.stride * 4, frame + (size_t)y * w * 4, (size_t)cols * 4);
+            }
+            pthread_mutex_unlock(&frame_lock);
+            ANativeWindow_unlockAndPost(window);
+            posted++; wait_ms += t1 - t0; copy_ms += clock_ms() - t1;
+        } else {
+            pthread_mutex_lock(&frame_lock);
+            dirty = 0;
+            pthread_mutex_unlock(&frame_lock);
+        }
+        pthread_mutex_unlock(&window_lock);
+        uint32_t now = clock_ms();
+        if (now - window_start >= 1000) {
+            __android_log_print(ANDROID_LOG_INFO, TAG, "present: %u posted, waited %u ms for the display, copied and posted %u ms",
+                                posted, wait_ms, copy_ms);
+            window_start = now; posted = wait_ms = copy_ms = 0;
+        }
+    }
+    return NULL;
+}
 
 FN(void, setSurface)(JNIEnv *env, jclass c, jobject surface) {
+    pthread_mutex_lock(&window_lock);
     if (window) ANativeWindow_release(window);
     window = surface ? ANativeWindow_fromSurface(env, surface) : NULL;
     if (window) ANativeWindow_setBuffersGeometry(window, (int32_t)cw_width(), (int32_t)cw_height(), WINDOW_FORMAT_RGBA_8888);
+    pthread_mutex_unlock(&window_lock);
+    // A new surface has nothing on it, so the frame is posted again.
+    pthread_mutex_lock(&frame_lock);
+    if (frame) { dirty = 1; pthread_cond_signal(&frame_ready); }
+    pthread_mutex_unlock(&frame_lock);
 }
 
-// Renders the screen into the window, which the compositor scales to the
-// display. Returns how much of the screen is lit, in thousandths, sampled as
-// the page samples it: a black screen is Cythera loading.
+// Renders the screen and hands the presenter the frame when it differs from
+// the one before. Returns how much of the screen is lit, in thousandths,
+// sampled as the page samples it: a black screen is Cythera loading.
 FN(jint, present)(JNIEnv *env, jclass c) {
     uint32_t w = cw_width(), h = cw_height();
     const uint8_t *px = cw_render();
@@ -186,13 +255,25 @@ FN(jint, present)(JNIEnv *env, jclass c) {
     uint32_t lit = 0, seen = 0;
     for (uint32_t i = 0; i < w * h; i += 197, seen++)
         if (px[i * 4] | px[i * 4 + 1] | px[i * 4 + 2]) lit++;
-    ANativeWindow_Buffer buf;
-    if (window && ANativeWindow_lock(window, &buf, NULL) == 0) {
-        uint32_t rows = h < (uint32_t)buf.height ? h : (uint32_t)buf.height;
-        uint32_t cols = w < (uint32_t)buf.width ? w : (uint32_t)buf.width;
-        for (uint32_t y = 0; y < rows; y++)
-            memcpy((uint8_t *)buf.bits + (size_t)y * buf.stride * 4, px + (size_t)y * w * 4, (size_t)cols * 4);
-        ANativeWindow_unlockAndPost(window);
+    size_t size = (size_t)w * h * 4;
+    pthread_mutex_lock(&frame_lock);
+    if (!frame || frame_size != size) {
+        free(frame);
+        frame = malloc(size);
+        frame_size = frame ? size : 0;
+        frame_w = w; frame_h = h;
+        if (frame) memset(frame, 0, size);
+        dirty = 1;   // the first frame is posted even when it is black
     }
+    if (frame && memcmp(frame, px, size) != 0) {
+        memcpy(frame, px, size);
+        dirty = 1;
+    }
+    if (dirty && !presenter_started) {
+        pthread_t t;
+        if (pthread_create(&t, NULL, presenter, NULL) == 0) { pthread_detach(t); presenter_started = 1; }
+    }
+    if (dirty) pthread_cond_signal(&frame_ready);
+    pthread_mutex_unlock(&frame_lock);
     return (jint)(seen ? lit * 1000 / seen : 1000);
 }
