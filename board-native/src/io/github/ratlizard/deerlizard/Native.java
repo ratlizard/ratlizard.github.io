@@ -4,8 +4,9 @@ import android.view.Surface;
 
 /**
  * The module's calls (cythera-web/src/lib.rs, through jni.c). The module's
- * state is thread-local, so every call must come from one thread: only
- * Emulator's thread makes them.
+ * state is thread-local, so every call that reaches it must come from one
+ * thread: only Emulator's thread makes them. setView and setUndither reach
+ * only screen.c's drawing thread, and come from the activity's.
  */
 final class Native {
     static {
@@ -42,6 +43,10 @@ final class Native {
     static native int tuneInstall(int checksum, byte[] bytes);
     static native int audioDrain(byte[] out);
     static native void setSurface(Surface surface);
+    /** The part of the screen shown: zoom times as large, its top left corner at (u, v) in fractions of the screen. Any thread. */
+    static native void setView(float zoom, float u, float v);
+    /** grimoire's undither filter on the screen, or off. Any thread. */
+    static native void setUndither(boolean on);
     /** Draws the screen into the surface; returns the lit part of the screen in thousandths. */
     static native int present();
 }

@@ -14,6 +14,8 @@ import co.harrishill.board.session.SessionManagerBridge;
  * (e-z-g-disassembly, tools/sheepshaver-board/). Raw touches are not
  * swallowed, so the activity still receives them. Quit and Save & Quit both
  * write the changed files and end the app; a game is saved in the game.
+ * One button of the app's turns grimoire's undither filter on and off
+ * (screen.c), and the choice is kept for the next launch.
  */
 final class BoardMenu {
     static final String TAG = MainActivity.TAG;
@@ -41,11 +43,23 @@ final class BoardMenu {
                 }
                 SystemClock.sleep(100);
             }
-            String[] none = new String[0];
-            BoardNativePlugin.setPauseContext(a.getPackageName(), "Cythera", false, none, none, none, none, none, new int[0]);
+            setContext();
             BoardNativePlugin.showSystemMenuButton();
             Log.i(TAG, "[menu] Board menu button set up");
         }, "board-menu").start();
+    }
+
+    /**
+     * The pause screen's one button of the app's, the undither filter, named
+     * for what it is now; set again when it changes. The arrays are the
+     * buttons' ids, texts and icons, as the SheepShaver apps pass them
+     * (e-z-g-disassembly, tools/sheepshaver-board/BoardMenu.java).
+     */
+    static void setContext() {
+        String[] none = new String[0];
+        String text = activity.undither() ? "Undither: On" : "Undither: Off";
+        BoardNativePlugin.setPauseContext(activity.getPackageName(), "Cythera", false,
+            new String[] { "undither" }, new String[] { text }, new String[] { "" }, none, none, new int[0]);
     }
 
     static void show() {
@@ -55,6 +69,11 @@ final class BoardMenu {
     static void onResult() {
         String action = PauseResultCallbackImpl.getActionType();
         Log.i(TAG, "[menu] pause screen: " + action);
+        if ("CUSTOM_ACTION".equals(action) && "undither".equals(PauseResultCallbackImpl.getCustomButtonId()) && activity != null) {
+            activity.setUndither(!activity.undither());
+            try { setContext(); } catch (Throwable t) { Log.w(TAG, "[menu] " + t); }
+            return;
+        }
         if (action != null && action.startsWith("EXIT_GAME") && activity != null) activity.quit();
     }
 

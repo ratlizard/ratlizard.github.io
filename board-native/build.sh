@@ -69,8 +69,8 @@ fi
   CARGO_TARGET_DIR="$target" CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4} \
   "$TC/bin/cargo" rustc --release --target aarch64-linux-android "$@" --crate-type staticlib)
 work="$cache/build"; rm -rf "$work"; mkdir -p "$work/classes" "$work/dex" "$work/assets/tunes" "$work/stage/lib/arm64-v8a"
-"$CC" -shared -fPIC -O2 -o "$work/stage/lib/arm64-v8a/libdeerlizard.so" "$here/jni.c" \
-  "$target/aarch64-linux-android/release/libcythera_web.a" -landroid -llog -lm -ldl -Wl,--gc-sections
+"$CC" -shared -fPIC -O2 -o "$work/stage/lib/arm64-v8a/libdeerlizard.so" "$here/jni.c" "$here/screen.c" \
+  "$target/aarch64-linux-android/release/libcythera_web.a" -landroid -llog -lEGL -lGLESv2 -lm -ldl -Wl,--gc-sections
 
 "$JAVA_HOME/bin/javac" --release 8 -nowarn -classpath "$JAR:$AAR/classes.jar" -d "$work/classes" $(find "$here/src" -name '*.java') > "$work/javac.log" 2>&1 || { cat "$work/javac.log"; exit 1; }
 "$BT/d8" --release --min-api 29 --lib "$JAR" --output "$work/dex" $(find "$work/classes" -name '*.class') "$AAR/classes.jar" 2>&1 | grep -v -E "^Warning|Missing class|is not found|^ *$" || true

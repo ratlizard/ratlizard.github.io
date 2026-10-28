@@ -18,6 +18,9 @@ import java.net.Socket;
  *   key CODE CHAR    a Mac key code and character code, pressed for 120 ms
  *   stat             the last second's figures
  *   events           the last piece and touch lines (Events)
+ *   undither on|off  the undither filter, as the pause screen's button
+ *   zoom Z U V       Z times as large, the top left corner at (U, V) in
+ *                    fractions of the screen, as a pinch leaves it
  * Each line is answered "ok", the figures, or "? LINE".
  */
 final class Remote extends Thread {
@@ -55,6 +58,15 @@ final class Remote extends Thread {
             switch (w[0]) {
                 case "stat": return emu.status;
                 case "events": return Events.all();
+                case "undither": activity.runOnUiThread(() -> activity.setUndither(w[1].equals("on"))); return "ok";
+                case "zoom": {
+                    final float z = Float.parseFloat(w[1]), u = Float.parseFloat(w[2]), v = Float.parseFloat(w[3]);
+                    activity.runOnUiThread(() -> {
+                        activity.zoom = z; activity.left = u * emu.width; activity.top = v * emu.height;
+                        activity.showView();
+                    });
+                    return "ok";
+                }
                 case "key": {
                     final int code = Integer.decode(w[1]), ch = Integer.decode(w[2]);
                     emu.post(() -> Native.keyDown(code, ch));
