@@ -53,11 +53,12 @@ target=${CARGO_TARGET_DIR:-$HOME/e-z-g-cythera/ratlizard.github.io/target}
 CPU=${CPU:-ppc}
 set --
 if [ "$CPU" = 68k ] && [ "${JIT:-1}" = 1 ]; then
-  # The 68K program with the fork's JIT. m68k 0.14.6, the version the
-  # fork's lock file names, has upstream's fix for the RTS fault that
-  # m68k-patched/ was made for (its changelog: "bare RTS/RTD becomes a
-  # dynamic-exit trace terminal"), so the published crate is used. This
-  # build's cache goes in a separate target folder.
+  # The 68K program with the fork's JIT. The fork's lock file names m68k
+  # 0.14.4, and no published release, 0.14.6 included, has the fix for the RTS
+  # fault that m68k-patched/ was made for (the trace cache resumes a region
+  # that ends on a guarded return at the word after the RTS). A long run on
+  # this build can fault, so use JIT=0, or build the fork against
+  # m68k-patched/. This build's cache goes in a separate target folder.
   set -- --features jit
   target="$target/board-68k"
 fi
