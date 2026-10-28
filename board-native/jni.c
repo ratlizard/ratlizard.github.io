@@ -182,6 +182,9 @@ extern void screen_set_view(float zoom, float u, float v);
 extern void screen_set_undither(int on);
 extern int screen_undither(void);
 
+// Whether present() reads the palette indices for the filter.
+static volatile int use_indices = 1;
+
 FN(void, setSurface)(JNIEnv *env, jclass c, jobject surface) {
     screen_set_window(surface ? ANativeWindow_fromSurface(env, surface) : NULL);
 }
@@ -194,7 +197,7 @@ FN(jint, present)(JNIEnv *env, jclass c) {
     uint32_t w = cw_width(), h = cw_height();
     // The indices first, as the page takes them: reading them can grow the
     // module's memory.
-    const uint8_t *idx = screen_undither() ? cw_render_indices() : NULL;
+    const uint8_t *idx = screen_undither() && use_indices ? cw_render_indices() : NULL;
     const uint8_t *px = cw_render();
     if (!px) return 1000;
     uint32_t lit = 0, seen = 0;
@@ -207,3 +210,4 @@ FN(jint, present)(JNIEnv *env, jclass c) {
 // Neither touches the module's state, so either may come from any thread.
 FN(void, setView)(JNIEnv *env, jclass c, jfloat zoom, jfloat u, jfloat v) { screen_set_view(zoom, u, v); }
 FN(void, setUndither)(JNIEnv *env, jclass c, jboolean on) { screen_set_undither(on ? 1 : 0); }
+FN(void, setUnditherIndices)(JNIEnv *env, jclass c, jboolean on) { use_indices = on ? 1 : 0; }

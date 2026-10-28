@@ -50,16 +50,18 @@ final class BoardMenu {
     }
 
     /**
-     * The pause screen's one button of the app's, the undither filter, named
-     * for what it is now; set again when it changes. The arrays are the
-     * buttons' ids, texts and icons, as the SheepShaver apps pass them
-     * (e-z-g-disassembly, tools/sheepshaver-board/BoardMenu.java).
+     * The pause screen's one button of the app's, Undither, which turns the
+     * filter on and off. The arrays are the buttons' ids, texts and icons, set
+     * once, as the SheepShaver apps' Keyboard and Cheats buttons are
+     * (e-z-g-disassembly, tools/sheepshaver-board/BoardMenu.java). The first
+     * build named the button "Undither: On" or "Undither: Off" and set the
+     * context again from the press's callback to rename it; the first press
+     * reached the app and none after it did (28 October 2026).
      */
     static void setContext() {
         String[] none = new String[0];
-        String text = activity.undither() ? "Undither: On" : "Undither: Off";
         BoardNativePlugin.setPauseContext(activity.getPackageName(), "Cythera", false,
-            new String[] { "undither" }, new String[] { text }, new String[] { "" }, none, none, new int[0]);
+            new String[] { "undither" }, new String[] { "Undither" }, new String[] { "" }, none, none, new int[0]);
     }
 
     static void show() {
@@ -71,7 +73,6 @@ final class BoardMenu {
         Log.i(TAG, "[menu] pause screen: " + action);
         if ("CUSTOM_ACTION".equals(action) && "undither".equals(PauseResultCallbackImpl.getCustomButtonId()) && activity != null) {
             activity.setUndither(!activity.undither());
-            try { setContext(); } catch (Throwable t) { Log.w(TAG, "[menu] " + t); }
             return;
         }
         if (action != null && action.startsWith("EXIT_GAME") && activity != null) activity.quit();

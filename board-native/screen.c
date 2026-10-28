@@ -398,6 +398,8 @@ static int take_window(void) {
     return surf != EGL_NO_SURFACE && gl_ready;
 }
 
+static uint32_t locked, sampled;
+
 static void *presenter(void *unused) {
     if (!gl_start()) { LOG("screen: EGL did not start (0x%x)", eglGetError()); return NULL; }
     uint32_t window_start = clock_ms(), posted = 0, filtered = 0, draw_ms = 0;
@@ -422,6 +424,9 @@ static void *presenter(void *unused) {
             glBindTexture(GL_TEXTURE_2D, tex_src);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, (GLsizei)w, (GLsizei)h, GL_RGBA, GL_UNSIGNED_BYTE, frame);
             if (idx) {
+                // How much of the screen the filter is to leave alone, for the log.
+                locked = sampled = 0;
+                for (uint32_t i = 0; i < w * h; i += 197, sampled++) if (indices[i] >= 224 && indices[i] < 252) locked++;
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
                 glBindTexture(GL_TEXTURE_2D, tex_idx);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, (GLsizei)w, (GLsizei)h, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, indices);
@@ -459,7 +464,8 @@ static void *presenter(void *unused) {
         draw_ms += clock_ms() - t0;
         uint32_t now = clock_ms();
         if (now - window_start >= 1000) {
-            LOG("present: %u posted, %u undithered, %u ms drawing and swapping", posted, filtered, draw_ms);
+            LOG("present: %u posted, %u undithered (%s, %u of %u sampled pixels animated), %u ms drawing and swapping",
+                posted, filtered, has_indices ? "with indices" : "without indices", locked, sampled, draw_ms);
             window_start = now; posted = filtered = draw_ms = 0;
         }
     }

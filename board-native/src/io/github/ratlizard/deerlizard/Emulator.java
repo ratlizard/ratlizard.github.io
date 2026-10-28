@@ -73,6 +73,13 @@ final class Emulator extends Thread {
             if (Native.tuneInstall(checksum, readAll(context.getAssets().open("tunes/" + name))) != 0) tunes++;
         }
         Native.start();
+        // The module's pointer starts at the top left corner, and Cythera
+        // shows its menu bar while the pointer is at the top edge
+        // (SYSTEMLESS-NEXT.md, systemless/menubar-3him8u), so the bar stood
+        // over the start screen until a finger first moved the pointer (the
+        // maintainer, 28 October 2026). A finger never hovers, so the
+        // pointer is put in the middle of the screen.
+        Native.mouseMove(height / 2, width / 2);
         Log.i(TAG, "booted in " + (SystemClock.uptimeMillis() - t0) + " ms, screen " + Native.width() + "x" + Native.height()
             + ", " + Native.instructionsPerTick() + " instructions/tick, " + restored + " save file(s) restored, "
             + seeded + " seeded, " + tunes + " tune(s)");
@@ -126,6 +133,11 @@ final class Emulator extends Thread {
         }
     }
 
+    /** Ms after the last sound the game made before a black screen runs unpaced again. */
+    static final long HEARD = 1000;
+    long heardAt = -HEARD;   // when the game last made a sound
+    long written;            // frames written to the track
+
     void play(AudioTrack track, byte[] audio) {
         final int iptDefault = Native.instructionsPerTick();
         int ipt = iptDefault;
@@ -141,8 +153,15 @@ final class Emulator extends Thread {
             boolean drawn;
             if (lit > 20) blackSince = 0;
             else if (blackSince == 0) { blackSince = now; catchSlice = 20_000; }
-            if (blackSince != 0 && now - blackSince < 8000) {
-                // A black screen is the game loading: run unpaced (the page's reasoning, frame()).
+            if (blackSince != 0 && now - blackSince < 8000 && now - heardAt > HEARD) {
+                // A black screen is the game loading: run unpaced (the page's
+                // reasoning, frame(): "there is no frame to be in time for and
+                // no sound to be in step with"). Sound is the exception: the
+                // start screen's music begins on a black screen as it fades
+                // in, and run unpaced it came out several times too fast and
+                // was cut to what the track had room for (the maintainer, 28
+                // October 2026, "the music gets crushed"). So the game is
+                // paced while it makes a sound and for HEARD ms after.
                 long g0 = SystemClock.uptimeMillis();
                 insWindow += runCatchup(now, 42);
                 guestMsWindow += SystemClock.uptimeMillis() - g0;
@@ -177,7 +196,19 @@ final class Emulator extends Thread {
                 drawn = true;
             }
             int n = Native.audioDrain(audio);
-            if (n > 0) track.write(audio, 0, n, AudioTrack.WRITE_NON_BLOCKING);
+            if (n > 0) {
+                for (int i = 0; i < n; i += 64) if (Math.abs((audio[i] & 0xFF) - 128) > 4) { heardAt = now; break; }
+                // More than the track has room for is the guest running ahead
+                // of the clock. Only the newest of it is written, as the page
+                // posts only the newest ring-full (pushAudio): it is the music
+                // the game is playing now, where a write from the start kept
+                // the oldest and dropped the rest.
+                long queued = written - (track.getPlaybackHeadPosition() & 0xFFFFFFFFL);
+                int room = (int) Math.max(0, track.getBufferSizeInFrames() - queued);
+                int from = Math.max(0, n - room);
+                int put = track.write(audio, from, n - from, AudioTrack.WRITE_NON_BLOCKING);
+                if (put > 0) written += put;
+            }
             if (drawn) {
                 long d0 = SystemClock.uptimeMillis();
                 lit = Native.present();

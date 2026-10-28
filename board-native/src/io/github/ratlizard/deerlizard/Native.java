@@ -47,6 +47,8 @@ final class Native {
     static native void setView(float zoom, float u, float v);
     /** grimoire's undither filter on the screen, or off. Any thread. */
     static native void setUndither(boolean on);
+    /** Whether the filter reads each pixel's palette index to leave the animated colours alone (on by default). Any thread. */
+    static native void setUnditherIndices(boolean on);
     /** Draws the screen into the surface; returns the lit part of the screen in thousandths. */
     static native int present();
 }

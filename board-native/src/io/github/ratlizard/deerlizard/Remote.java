@@ -19,6 +19,7 @@ import java.net.Socket;
  *   stat             the last second's figures
  *   events           the last piece and touch lines (Events)
  *   undither on|off  the undither filter, as the pause screen's button
+ *   indices on|off   whether the filter leaves the animated colours alone
  *   zoom Z U V       Z times as large, the top left corner at (U, V) in
  *                    fractions of the screen, as a pinch leaves it
  * Each line is answered "ok", the figures, or "? LINE".
@@ -59,6 +60,7 @@ final class Remote extends Thread {
                 case "stat": return emu.status;
                 case "events": return Events.all();
                 case "undither": activity.runOnUiThread(() -> activity.setUndither(w[1].equals("on"))); return "ok";
+                case "indices": Native.setUnditherIndices(w[1].equals("on")); return "ok";
                 case "zoom": {
                     final float z = Float.parseFloat(w[1]), u = Float.parseFloat(w[2]), v = Float.parseFloat(w[3]);
                     activity.runOnUiThread(() -> {
