@@ -194,7 +194,17 @@ public class MainActivity extends Activity {
     /** The mouse finger's press, preceded by the dial's command letter if it reads one. */
     void press() {
         if (!waiting) return;
-        waiting = false; pressed = true;
+        waiting = false;
+        // A piece marks itself only once the detector has seen it for
+        // PieceStick.REAL ms, which is before PINCH_WAIT is up: a piece set
+        // down is caught here even when its touch came first.
+        if (PieceStick.nearPiece(downX, downY)) {
+            Events.note(String.format("[touch] %d at %.0f,%.0f is a piece's after all", mouse, downX, downY));
+            ignored.add(mouse);
+            mouse = -1;
+            return;
+        }
+        pressed = true;
         final int[] p = game(downX, downY);
         final int[] key = PieceStick.letter();
         if (key != null) Events.note("[touch] " + (char) key[1] + " and a press");

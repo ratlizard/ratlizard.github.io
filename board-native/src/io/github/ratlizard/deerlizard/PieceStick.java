@@ -80,6 +80,8 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     /** A touch that starts within NEAR display pixels of where a piece was seen in the last RECENT ms is a piece's, not a finger's. */
     static final float NEAR = 160;
     static final long RECENT = 400;
+    /** Ms a contact must have been a piece before it marks one. */
+    static final long REAL = 80;
 
     /** The Mac key code and character of each octant's keypad key, clockwise from up. */
     static final int[][] KEYS = {
@@ -94,6 +96,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
 
     final MainActivity activity;
     final java.util.Map<Integer, long[]> since = new java.util.HashMap<>();   // contact: glyph, first time
+    final java.util.Map<Integer, long[]> born = new java.util.HashMap<>();    // the same, for marking
     final float[][] marks = new float[16][];                                  // x, y, time of recent piece contacts
     int markAt;
     final java.util.BitSet seen = new java.util.BitSet();
@@ -182,8 +185,19 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
             if (c.phaseId == BoardContactEvent.BC_PHASE_BEGAN || gone(c))
                 Events.note(String.format("[contact] %d %s: type %d glyph %d at %.0f,%.0f facing %.0f",
                     c.contactId, gone(c) ? "off" : "on", c.typeId, c.glyphId, c.positionX, c.positionY, c.orientation));
-            if (c.typeId != BoardContactEvent.BC_TYPE_GLYPH || c.glyphId <= 0) continue;   // 0 is a finger
-            if (!gone(c)) mark(c.positionX, c.positionY);
+            if (c.typeId != BoardContactEvent.BC_TYPE_GLYPH || c.glyphId <= 0) { born.remove(c.contactId); continue; }   // 0 is a finger
+            // A fingertip is read as a piece now and then, for 30 to 45 ms
+            // (the knife and the spoon on 28 October 2026). Marked at once,
+            // each of those flickers threw away every tap near it for RECENT
+            // ms, and taps in a row kept throwing each other away. So a
+            // contact marks a piece only once it has been one for REAL ms.
+            if (gone(c)) born.remove(c.contactId);
+            else {
+                long now = System.currentTimeMillis();
+                long[] first = born.get(c.contactId);
+                if (first == null || first[0] != c.glyphId) born.put(c.contactId, first = new long[] { c.glyphId, now });
+                if (now - first[1] >= REAL) mark(c.positionX, c.positionY);
+            }
             boolean held = c.contactId == stick || c.contactId == chef;
             if (gone(c)) { since.remove(c.contactId); if (!held) continue; }
             // A contact acts only once it has been the same glyph for STEADY ms: a landing piece
