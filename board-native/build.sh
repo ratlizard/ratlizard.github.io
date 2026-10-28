@@ -16,7 +16,12 @@
 #          ../patches/app-walk-path --only walk-to,walk-path` in grimoire: a
 #          piece's command walks the hero to its target; APP= boots the
 #          program unpatched)
-#   TUNES  the pre-rendered tunes, as board/pack.sh (default tune-library-qt/)
+#   QT     QuickTime 3's installer; the fork renders each tune on its
+#          instruments when the tune starts (default
+#          ~/e-z-g-cythera/work/QUICKTIM.EXE; QT= leaves it out)
+#   TUNES  pre-rendered tunes, as board/pack.sh; an installed tune plays in
+#          place of the instruments (default tune-library-qt/ only when QT is
+#          missing)
 #   AAR    the Board SDK's board.aar, unzipped (default the one in
 #          e-z-g-disassembly's reference/carmen-time/board/aar)
 #   SEED   a test build: NAME=FOLDER, a kit save folder put in the game's
@@ -35,7 +40,9 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo="$here/.."
 GAME=${GAME-"$repo/../cythera-reference/game/installed-folders/Cythera Installed Folder.sit"}
-TUNES=${TUNES-"$HOME/e-z-g-cythera/tune-library-qt"}
+QT=${QT-"$HOME/e-z-g-cythera/work/QUICKTIM.EXE"}
+[ -f "$QT" ] || QT=
+if [ -n "$QT" ]; then TUNES=${TUNES-}; else TUNES=${TUNES-"$HOME/e-z-g-cythera/tune-library-qt"}; fi
 APP=${APP-"$HOME/e-z-g-cythera/patches/app-walk-path"}
 AAR=${AAR:-$HOME/e-z-g-disassembly/reference/carmen-time/board/aar}
 cache="$here/.cache"
@@ -93,6 +100,7 @@ fi
 mkdir -p "$work/assets/prefs"   # Prefs.java: a preferences file the game wrote
 cp "$repo/../cythera-workbench/tools/drive-scripts/fixtures/System Folder/Preferences/Cythera Preferences/resource.fork" "$work/assets/prefs/"
 [ -z "$TUNES" ] || cp "$TUNES"/*.wav "$work/assets/tunes/"
+[ -z "$QT" ] || cp "$QT" "$work/assets/quicktime.exe"   # Emulator.boot
 if [ -n "${SEED-}" ]; then
   mkdir -p "$work/assets/seed/${SEED%%=*}"
   cp "${SEED#*=}/metadata.json" "${SEED#*=}/data.fork" "${SEED#*=}/resource.fork" "$work/assets/seed/${SEED%%=*}/"

@@ -66,6 +66,18 @@ final class Emulator extends Thread {
         int restored = saves.restore();
         int seeded = saves.seed(Native.gameFolder());
         int tunes = 0;
+        // QuickTime 3's installer, if the build has it: the fork reads the
+        // file SYSTEMLESS_QT_INSTRUMENTS names the first time a tune plays.
+        try (InputStream in = context.getAssets().open("quicktime.exe")) {
+            java.io.File qt = new java.io.File(context.getFilesDir(), "quicktime.exe");
+            if (!qt.exists() || qt.length() != in.available()) {
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(qt)) { out.write(readAll(in)); }
+            }
+            Native.setEnv("SYSTEMLESS_QT_INSTRUMENTS", qt.getPath());
+            Log.i(TAG, "QuickTime instruments from " + qt.getPath());
+        } catch (java.io.FileNotFoundException e) {
+            // a build without them
+        }
         String[] names = context.getAssets().list("tunes");
         if (names != null) for (String name : names) {
             if (!name.endsWith(".wav")) continue;

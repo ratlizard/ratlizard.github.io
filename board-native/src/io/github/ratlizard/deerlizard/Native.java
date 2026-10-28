@@ -15,6 +15,7 @@ final class Native {
 
     static native int load(byte[] archive, int macEpochSecs, int width, int height, boolean powerpc);
     static native String error();
+    static native void setEnv(String name, String value);
     static native int start();
     static native int importFile(String path, int type, int creator, int flags, int created, int modified, byte[] data, byte[] rsrc);
     static native int saveScan();

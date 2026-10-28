@@ -157,6 +157,13 @@ FN(jstring, haltReason)(JNIEnv *env, jclass c) {
     return len ? utf8(env, cw_halt_reason(), len) : (*env)->NewStringUTF(env, "");
 }
 
+FN(void, setEnv)(JNIEnv *env, jclass c, jstring name, jstring value) {
+    const char *n = (*env)->GetStringUTFChars(env, name, NULL), *v = (*env)->GetStringUTFChars(env, value, NULL);
+    setenv(n, v, 1);
+    (*env)->ReleaseStringUTFChars(env, name, n);
+    (*env)->ReleaseStringUTFChars(env, value, v);
+}
+
 FN(jint, tuneInstall)(JNIEnv *env, jclass c, jint checksum, jbyteArray a) {
     jsize len = (*env)->GetArrayLength(env, a);
     jbyte *p = (*env)->GetByteArrayElements(env, a, NULL);
