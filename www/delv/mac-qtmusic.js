@@ -52,8 +52,7 @@
    or the instrument's with its key scaling, in the synthesizer's
    straight pan law; the wheel and the sustain pedal; a re-struck note and
    an exclusion group cutting what sounds, and the taking of a voice when
-   none is free (QT_VOICES). Measured, not read: how a note's velocity
-   becomes its level (QT_VELOCITY_POWER).
+   none is free (QT_VOICES); the square of a level under 1 (qtServeLevel).
 
    WHAT IS STILL NOT HERE, each for a reason. Reverb: the synthesizer's
    Reverb setting is off by default, and a voice goes to the reverb bus
@@ -105,27 +104,58 @@ const QTMS_KNOB = { attack: 1, decay: 2, sustain: 3, keyToDecay: 5, release: 6, 
    scalings unused, and a kit's note played to its sample's end whatever
    its length. The kit needs no separate rule: its release is 40 s. */
 const QT_ENV = { span: 1 / 65536, floor: 1 / 65536 };
-/* HOW LOUD A NOTE IS, where the reading and the recordings differ. The
-   synthesizer computes a note's level as (velocity + 1) / 128 times its
-   velocity sensitivity (StartNoteKeyrange; 100 per cent in every
-   instrument), and multiplies it by the part's volumes and the envelope,
-   all in straight proportion (Serve_This_One). Held to the soundtrack's
-   "(Classic)" recordings of the eleven tunes, though, the square of that
-   level is nearer than the level itself on every tune, by the spectrum,
-   the onsets and the loudness contour, with this envelope as with the
-   inferred one (the workbench's tools/qtma-fit/). So something ahead of the
-   synthesizer would have to shape velocity, and nothing does: the tune
-   player hands NAPlayNote the event's seven bits and the note allocator
-   hands MusicPlayNote the same number (both 68K, in the same extension,
-   read the same day), and the mixers multiply a sample by the gain and
-   shift. So by its code QuickTime is in straight proportion from the
-   event to the output, and the recordings depart from that proportion: either they were not
-   made by QuickTime itself (a SoundFont synthesizer playing these same
-   samples squares velocity as a matter of course), or something outside
-   the three components does it. The square is used because it is what
-   the recordings sound like; a capture of the game playing in an
-   emulated Mac would settle it. opts.velExp overrides it. */
-const QT_VELOCITY_POWER = 2;
+/* HOW LONG A STAGE LASTS. Every stage of every envelope runs 1.451 times
+   the time its knob gives. QuickTime 3.0.2's synthesizer (the PowerPlug's
+   'musk', read 28 October 2026) mixes in blocks of 128 frames
+   (SetSynthFeaturesByHardware stores 128, or 256 under a flag not
+   identified) and advances each envelope once a block.
+   SetSynthTimingConstants works the block's length out in milliseconds as
+   a 16.16 number, 2.902 at 44,100 Hz, and StartNoteKeyrange hands only its
+   whole part, 2, to SetADSRStuff as the step. So each stage's rate is
+   computed for 2 ms a step and applied every 2.902 ms, and a stage of
+   1,000 ms lasts 1,451.
+
+   Measured against the game's music captured from Mac OS 8.5 at 44,100
+   Hz, each of the theme's parts alone: the release falls 0.65 times as
+   fast in dB as with the knob's time (the choir 23 dB in 200 ms against
+   34, the Goblin pad 14 dB in a second against 22), and with this factor
+   it falls alike to 300 ms, after which the quiet capture's 16-bit samples
+   round to zero. The parts' levels at 80 to 2,560 Hz, which spread over
+   2.3 dB from the median without it, come within 0.8 dB with it (the
+   Goblin pad, with its 1.5 s attack, from 1.7 dB over to 0.1). The 256
+   frames' 1.161 leaves a spread of 1.5 dB. A Mac whose Sound Manager ran
+   at 22,254 Hz would have a factor of 1.150; the factor is the block's
+   length over its whole milliseconds, and opts.envStretch overrides it. */
+const QT_ENV_STRETCH = (128000 / 44100) / Math.floor(128000 / 44100);
+/* HOW LOUD A NOTE IS. QuickTime squares a voice's level when it is under
+   1. The synthesizer computes a note's level as (velocity + 1) / 128,
+   moved about a half by the velocity sensitivity knob (StartNoteKeyrange),
+   and Serve_This_One multiplies it by the part's volume: twice the master
+   volume (0x7FFF at start, so 1) times controllers 7, 11, 42 and 43, each
+   stored as its 8.8 value doubled, so 127 is 0.992. Then, in QuickTime
+   3.0.2's PowerPlug (read 28 October 2026, at 0xF70C to 0xF758 of its
+   'musk'), a product over 0x3FFFF is held there, a product under 0x10000
+   is multiplied by itself (FixMul of the product with itself), and one
+   between is used as it is. The envelope and the pan come after, in
+   straight proportion. The tune player and the note allocator hand the
+   velocity on unchanged, and the controllers the same.
+
+   With the sensitivity at its default of 100 in every instrument of the
+   set, the level is at most 1 and the product under 1 for every note
+   Cythera plays, so its music is the square of velocity times volume
+   times expression throughout. That is what the captures measured before
+   the square was found in the code: velocity nearer its square than
+   itself on all eleven tunes against QuickTime 3 on Mac OS 8.5 (the
+   workbench's tools/qtma-fit/record.py and capture.py, 25 October 2026),
+   and each of the theme's parts alone nearer its volume squared (5 of 7
+   within 0.7 dB, against a spread of 4.7 dB in straight proportion). The
+   "(Classic)" soundtrack recordings fit the same square, and match those
+   captures, so QuickTime made them. Above 1, which a sensitivity over 100
+   or another tune could reach, QuickTime uses the level unsquared, up to
+   QT_LEVEL_MAX. opts.velExp and opts.volExp, for experiments, replace the
+   rule with velocity and volume each raised to a power of its choosing. */
+const QT_LEVEL_MAX = 0x3FFFF / 0x10000;
+const qtServeLevel = p => p < 1 ? p * p : Math.min(p, QT_LEVEL_MAX);
 /* How many notes can sound at the same time. The synthesizer requests 14 by default
    ('SSkn': Requested Polyphony, 1 to 48) and then sets its features by the
    machine (SetSynthFeaturesByHardware), so what a given Mac had is not in
@@ -498,9 +528,11 @@ function qtmaRender(events, tones, lib, opts) {
   const liveSteps = (p, t0, t1) => (ctlTimeline[p] || []).filter(e => (e.ctl === 32 || e.ctl === 1) && e.t > t0 && e.t < t1);
 
   /* An envelope, stepped a frame at a time (QT_ENV has the reading): times
-     in frames, `logs` the stage's bit of Log Curves shifted down to 1
-     attack, 2 decay, 4 sustain, 8 release. */
+     in frames, each stretched by QT_ENV_STRETCH, `logs` the stage's bit of
+     Log Curves shifted down to 1 attack, 2 decay, 4 sustain, 8 release. */
+  const stretch = opts.envStretch || QT_ENV_STRETCH;
   const makeEnv = (attack, decay, susLevel, susTime, forever, release, logs) => {
+    attack *= stretch; decay *= stretch; susTime *= stretch; release *= stretch;
     const fall = n => Math.pow(QT_ENV.span, 1 / Math.max(1, n));
     const decayMul = fall(decay), susMul = fall(susTime), relMul = fall(release);
     const decayAdd = (susLevel - 1) / Math.max(1, decay), susAdd = -susLevel / Math.max(1, susTime);
@@ -587,10 +619,12 @@ function qtmaRender(events, tones, lib, opts) {
 
     /* How loud (Serve_This_One): the note's level, which is velocity plus
        one over 128 moved about a half by the velocity sensitivity knob,
-       times the part's volume and its expression, the envelope, and one
-       plus the volume LFO. */
+       times the part's volume and its expression, squared under 1
+       (qtServeLevel), then the envelope and one plus the volume LFO. */
     const vel = Math.max(0, ((e.vol + 1) / 128 - 0.5) * knob(QTMS_KNOB.velocitySensitivity, 100) / 100 + 0.5);
-    const gain = Math.pow(vel, opts.velExp || QT_VELOCITY_POWER) * Math.pow(st.volume * st.expression, opts.volExp || 1);
+    const gain = opts.velExp || opts.volExp
+      ? Math.pow(vel, opts.velExp || 2) * Math.pow(st.volume * st.expression, opts.volExp || 2)
+      : qtServeLevel(vel * st.volume * st.expression);
     /* Where (the same routine): the part's pan controller, 1 to 2 in 8.8,
        or the instrument's "Default Pan Position" when the controller is
        under 1, moved by the key's distance from middle C times "Key
