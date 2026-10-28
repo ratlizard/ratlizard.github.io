@@ -651,7 +651,13 @@ function qtmaRender(events, tones, lib, opts) {
     const base = region.rate / rate;
     const msPerFrame = 1000 / rate;
 
-    const pcm = region.pcm, loopLen = region.loopEnd - region.loopStart + 1;
+    /* The loop runs from loopStart up to loopEnd, not including it: the
+       sample at loopEnd is the first after the loop. Read inclusive, every
+       loop is a sample longer and its note flat by that share, 27 cents on
+       the flute's 64-sample loop. Read exclusive, all eleven of Cythera's
+       tunes come within a cent of recordings of the game, where read
+       inclusive four were 3 to 15 cents flat. */
+    const pcm = region.pcm, loopLen = region.loopEnd - region.loopStart;
     let pos = 0, i = 0, step = 0, trem = 1;
     const v = { part: e.part, pitch: e.pitch, region, born: f0, group: knob(QTMS_KNOB.exclusionGroup, 0), stage: env.stage };
     // The pitch and the tremolo are worked out every 32 frames, under a
@@ -664,7 +670,7 @@ function qtmaRender(events, tones, lib, opts) {
     };
     const one = () => {
       let ip = pos | 0;
-      if (looped && ip > region.loopEnd) { pos -= loopLen * Math.floor((pos - region.loopStart) / loopLen); ip = pos | 0; }
+      if (looped && ip >= region.loopEnd) { pos -= loopLen * Math.floor((pos - region.loopStart) / loopLen); ip = pos | 0; }
       if (ip >= pcm.length - 1 && !looped) { v.stage = 0; return; }
       const frac = pos - ip;
       const a = pcm[ip], b = ip + 1 < pcm.length ? pcm[ip + 1] : a;
