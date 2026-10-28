@@ -26,7 +26,9 @@
 #   CPU    ppc (default), the PowerPC program on the fork's interpreter, or
 #          68k, the 68K program with the fork's JIT (JIT=0: without it)
 #   KEYSTORE  the signing key; an installed app is updated only with the key
-#          it was signed with (default .cache/deerlizard.keystore, made once)
+#          it was signed with (default ~/e-z-g-cythera/board/deerlizard.keystore,
+#          outside the repository so that it survives the removal of a front,
+#          and made once when it is missing)
 #
 # Install with `board-connect install .cache/deerlizard.apk` from ~.
 set -eu
@@ -38,7 +40,7 @@ APP=${APP-"$HOME/e-z-g-cythera/patches/app-walk-path"}
 AAR=${AAR:-$HOME/e-z-g-disassembly/reference/carmen-time/board/aar}
 cache="$here/.cache"
 mkdir -p "$cache"
-KEYSTORE=${KEYSTORE:-$cache/deerlizard.keystore}
+KEYSTORE=${KEYSTORE:-$HOME/e-z-g-cythera/board/deerlizard.keystore}
 
 TC="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin"
 NDK="$HOME/Library/Android/sdk/ndk/android-ndk-r27c/toolchains/llvm/prebuilt/darwin-x86_64"
