@@ -226,11 +226,21 @@ final class Emulator extends Thread {
             if (now - winT >= 1000) {
                 double secs = (now - winT) / 1000.0, rate = insWindow / secs;
                 int behind = Native.tick() - deadline;
+                // Behind the clock, the instructions per tick come down
+                // towards what the last second managed, by at most a fifth a
+                // second; keeping up, they go back up by a fifth a second.
+                // The page's rule, which this followed until 28 October
+                // 2026, set them to 90% of the last second at once and
+                // raised them by 5% a second: on the Board one stall on
+                // first walking into new ground (150,000 instructions taking
+                // 120 ms) cut them from 415k to 219k, and the game then ran
+                // slow for some ten seconds after the stall was over.
                 if (behind < -2) {
-                    ipt = (int) Math.max(100_000, Math.min(iptDefault, Math.round(rate * 0.9 / VBL_HZ)));
+                    long fit = Math.round(rate * 0.9 / VBL_HZ);
+                    ipt = (int) Math.max(100_000, Math.min(iptDefault, Math.max(fit, Math.round(ipt * 0.8))));
                     Native.setInstructionsPerTick(ipt);
                 } else if (ipt < iptDefault) {
-                    ipt = Math.min(iptDefault, Math.round(ipt * 1.05f)); Native.setInstructionsPerTick(ipt);
+                    ipt = Math.min(iptDefault, Math.round(ipt * 1.2f)); Native.setInstructionsPerTick(ipt);
                 }
                 status = String.format("%.1f M/s, %d ticks, %dk/tick, %d frames, guest %d ms, drawing %d ms%s",
                     rate / 1e6, behind, ipt / 1000, frames, guestMsWindow, drawMsWindow,
