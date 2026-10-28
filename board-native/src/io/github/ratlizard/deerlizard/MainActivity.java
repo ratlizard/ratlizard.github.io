@@ -43,13 +43,14 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         DisplayMetrics m = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getRealMetrics(m);
-        // The game's screen is 540 high and as wide as the display's shape:
-        // 960 on the Board's 1920x1080, scaled up twice. At the display's
-        // full size a map square was smaller than a piece; at 480 high the
-        // windows left too little room (the maintainer, 25 October 2026).
+        // The game's screen is the display's, 1920x1080 on the Board, drawn
+        // one to one (the maintainer, 28 October 2026, to try again). From
+        // 25 to 28 October it was 960x540 scaled up twice: at the display's
+        // full size a map square was smaller than a piece, and at 480 high
+        // the windows left too little room. A pinch zooms in now.
         int dw = Math.max(m.widthPixels, m.heightPixels), dh = Math.min(m.widthPixels, m.heightPixels);
-        int h = 540;
-        int w = Math.max(640, Math.round(dw * (float) h / dh)) & ~1;
+        int h = dh & ~1;
+        int w = Math.max(640, dw) & ~1;
         emulator = new Emulator(this, w, h);
         settings = getSharedPreferences("deerlizard", MODE_PRIVATE);
         Native.setUndither(undither());
@@ -108,6 +109,11 @@ public class MainActivity extends Activity {
      * the game first was a click on whatever lay under the first finger, which
      * is the fault the page's pinch_probe counts. A second finger landing
      * after the press has reached the game is ignored, as is any third.
+     * Two pieces set down together also land as two touches, and were taken
+     * for a pinch (the maintainer, 28 October 2026), so two touches only
+     * begin to zoom once they have drawn PINCH_MOVE pixels apart or
+     * together, and are dropped as pieces' if either turns out to be near a
+     * piece before that.
      *
      * While the chef's dial reads a command (PieceStick), the press is the
      * command's letter and then the press, so the game carries the press out
@@ -119,7 +125,8 @@ public class MainActivity extends Activity {
      * touches the screen too (PieceStick.nearPiece). Neither is a finger.
      */
     static final long PINCH_WAIT = 90, HOLD = 80, LETTER = 60, ARMED = 120;
-    static final float SLOP = 14;
+    static final float SLOP = 14, PINCH_MOVE = 30;
+    boolean zooming;                // the two touches have begun to zoom
     final ExecutorService inputs = Executors.newSingleThreadExecutor();
     final Handler ui = new Handler(Looper.getMainLooper());
     final Set<Integer> ignored = new HashSet<>();   // pointers that are pieces, the Board's own, or extra fingers
@@ -234,7 +241,7 @@ public class MainActivity extends Activity {
     }
 
     void startPinch(MotionEvent e, int a, int b) {
-        pinchA = a; pinchB = b;
+        pinchA = a; pinchB = b; zooming = false;
         int ia = e.findPointerIndex(a), ib = e.findPointerIndex(b);
         float mx = (e.getX(ia) + e.getX(ib)) / 2, my = (e.getY(ia) + e.getY(ib)) / 2;
         pinchFrom = Math.max(1, (float) Math.hypot(e.getX(ia) - e.getX(ib), e.getY(ia) - e.getY(ib)));
@@ -249,6 +256,16 @@ public class MainActivity extends Activity {
         if (ia < 0 || ib < 0) return;
         float mx = (e.getX(ia) + e.getX(ib)) / 2, my = (e.getY(ia) + e.getY(ib)) / 2;
         float d = (float) Math.hypot(e.getX(ia) - e.getX(ib), e.getY(ia) - e.getY(ib));
+        if (!zooming) {
+            if (PieceStick.nearPiece(e.getX(ia), e.getY(ia)) || PieceStick.nearPiece(e.getX(ib), e.getY(ib))) {
+                Events.note("[touch] two touches are pieces', not a pinch");
+                ignored.add(pinchA); ignored.add(pinchB);
+                pinchA = pinchB = -1;
+                return;
+            }
+            if (Math.abs(d - pinchFrom) < PINCH_MOVE) return;
+            zooming = true;
+        }
         float z = Math.max(1, Math.min(MAX_ZOOM, pinchZoom * d / pinchFrom));
         if (z < 1.04f) z = 1;
         float w = emulator.width / z, h = emulator.height / z;

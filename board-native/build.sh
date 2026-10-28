@@ -84,6 +84,12 @@ else
   cp -L "$GAME" "$work/assets/game.sit"
 fi
 cp "$AAR/../models/chop_chop_v1.3.0.tflite" "$work/assets/"   # PieceStick.java
+# The chef's dial draws the program's cursors (Rings.java, cursors.py); with
+# APP= it has no program's resource fork to take them from, and writes words.
+if [ -n "$APP" ]; then
+  mkdir -p "$work/assets/cursors"
+  python3 "$here/cursors.py" "$APP/Cythera.rsrc" "$work/assets/cursors" $(sed -n 's/.*CURSORS = {\(.*\)};.*/\1/p' "$here/src/io/github/ratlizard/deerlizard/Rings.java" | tr ',' ' ')
+fi
 mkdir -p "$work/assets/prefs"   # Prefs.java: a preferences file the game wrote
 cp "$repo/../cythera-workbench/tools/drive-scripts/fixtures/System Folder/Preferences/Cythera Preferences/resource.fork" "$work/assets/prefs/"
 [ -z "$TUNES" ] || cp "$TUNES"/*.wav "$work/assets/tunes/"

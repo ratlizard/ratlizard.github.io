@@ -135,6 +135,8 @@ final class Emulator extends Thread {
 
     /** Ms after the last sound the game made before a black screen runs unpaced again. */
     static final long HEARD = 1000;
+    /** The least ms between two renders of the screen. */
+    static final long FRAME_MS = 32;
     long heardAt = -HEARD;   // when the game last made a sound
     long written;            // frames written to the track
 
@@ -145,6 +147,7 @@ final class Emulator extends Thread {
         int startTick = Native.tick(), lit = 1000, catchingUp = 0;
         long insWindow = 0, frames = 0, guestMsWindow = 0, drawMsWindow = 0;
         double audioRemainder = 0;
+        long lastPresent = 0;
         while (!stopping) {
             for (Runnable r; (r = input.poll()) != null; ) r.run();
             if (surfaceChanged) { surfaceChanged = false; Native.setSurface(surface); }
@@ -209,7 +212,12 @@ final class Emulator extends Thread {
                 int put = track.write(audio, from, n - from, AudioTrack.WRITE_NON_BLOCKING);
                 if (put > 0) written += put;
             }
-            if (drawn) {
+            // Rendering a 1920x1080 screen takes about 4 ms of this thread,
+            // which at 60 a second was a quarter of each second taken from
+            // the game (28 October 2026). The game draws at 10 to 20 frames
+            // a second, so the screen is rendered at most every FRAME_MS.
+            if (drawn && now - lastPresent >= FRAME_MS) {
+                lastPresent = now;
                 long d0 = SystemClock.uptimeMillis();
                 lit = Native.present();
                 drawMsWindow += SystemClock.uptimeMillis() - d0;
