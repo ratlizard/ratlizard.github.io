@@ -8,9 +8,9 @@
 //
 //   zoom      a part of the frame drawn over the whole display. The frame is
 //             a texture and the part is a rectangle of it, sampled "sharp
-//             bilinear": each game pixel is first scaled up by the largest
-//             whole number that fits and only the seam between two is
-//             blended, so a pixel stays square at 2.6 times as it does at 2.
+//             bilinear": each game pixel is first scaled up by the next
+//             whole number and only the seam between two is blended, so a
+//             pixel stays square at 1.5 or 2.6 times as it does at 2.
 //   undither  grimoire's undither filter (js/delv-graphics.js, `UD`), as the
 //             browser player runs it (www/index.html, makeUndither, and its
 //             comment for the reasoning): the same four passes, the same
@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <time.h>
 #include <pthread.h>
 #include <android/log.h>
@@ -456,7 +457,10 @@ static void *presenter(void *unused) {
         float cw = 1 / z, ch = 1 / z;
         glUniform4f(glGetUniformLocation(prog_blit, "u_crop"), u, v, cw, ch);
         float px = sw / (tex_w * cw), py = sh / (tex_h * ch);
-        glUniform2f(glGetUniformLocation(prog_blit, "u_prescale"), px < 1 ? 1 : (float)(int)px, py < 1 ? 1 : (float)(int)py);
+        // The next whole number up: at 1.5 times, two, so a game pixel is
+        // square with its edge blended; the whole number below, one, made
+        // the blit plain bilinear and the picture soft.
+        glUniform2f(glGetUniformLocation(prog_blit, "u_prescale"), px <= 1.01f ? 1 : ceilf(px - 0.01f), py <= 1.01f ? 1 : ceilf(py - 0.01f));
         const char *nb[] = { "u_tex" };
         pass(prog_blit, 0, 1, nb, &shown);
         eglSwapBuffers(dpy, surf);

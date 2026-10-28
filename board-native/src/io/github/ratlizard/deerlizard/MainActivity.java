@@ -27,6 +27,8 @@ import java.util.concurrent.Executors;
  */
 public class MainActivity extends Activity {
     static final String TAG = "Deerlizard";
+    /** The game's screen height, in game pixels. */
+    static final int HEIGHT = 720;
 
     // The Board's install check wants Board's native library loaded.
     static {
@@ -43,14 +45,15 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         DisplayMetrics m = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getRealMetrics(m);
-        // The game's screen is the display's, 1920x1080 on the Board, drawn
-        // one to one (the maintainer, 28 October 2026, to try again). From
-        // 25 to 28 October it was 960x540 scaled up twice: at the display's
-        // full size a map square was smaller than a piece, and at 480 high
-        // the windows left too little room. A pinch zooms in now.
+        // The game's screen is HEIGHT high and as wide as the display's
+        // shape: 1280x720 on the Board's 1920x1080, scaled up 1.5 times (the
+        // maintainer, 28 October 2026). Tried before it: 960x540, scaled
+        // twice, from 25 October; 1920x1080 one to one, where a map square
+        // was smaller than a piece; 480 high, where the windows left too
+        // little room. A pinch zooms in.
         int dw = Math.max(m.widthPixels, m.heightPixels), dh = Math.min(m.widthPixels, m.heightPixels);
-        int h = dh & ~1;
-        int w = Math.max(640, dw) & ~1;
+        int h = Math.min(HEIGHT, dh) & ~1;
+        int w = Math.max(640, Math.round(dw * (float) h / dh)) & ~1;
         emulator = new Emulator(this, w, h);
         settings = getSharedPreferences("deerlizard", MODE_PRIVATE);
         Native.setUndither(undither());
