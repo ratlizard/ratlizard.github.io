@@ -122,7 +122,7 @@
      what is left. Three things were wrong with that on a phone. `width` and
      `max-height` are the content box unless `box-sizing` is set, so a panel set
      to 96vw came to 399 px on a 393 px screen and one set to the window
-     less 60 px ended 10 px below the bottom of it -- the 10 px padding and the
+     minus 60 px ended 10 px below the bottom of it -- the 10 px padding and the
      border either side, both times. The 48 px top was an estimate of the bar's
      height, the same estimate the canvas made in 40 px, and it was wrong by
      36 on a phone, so the bar is measured instead (`--bar`). And a panel
@@ -471,8 +471,8 @@ const MAC_EPOCH_OFFSET = 2082844800;
 // fills the height, landscape is 480 high and fills the width, and the
 // canvas then covers the stage at the device's aspect. ?w=&h= overrides.
 // The space is measured rather than estimated: the page is a column of the
-// bar and the stage, so the game's height is the page's height less the
-// bar's, less whatever padding the stage leaves at its edges for the camera
+// bar and the stage, so the game's height is the page's height minus the
+// bar's, minus whatever padding the stage leaves at its edges for the camera
 // housing and the home indicator. Subtracting a nominal 40 px bar instead --
 // which this did -- was wrong by however much the bar's real height differed,
 // and on a phone the bar was 76. The log is NOT measured, because play hides
@@ -1634,7 +1634,7 @@ function makeUndither() {
       gl_FragColor = vec4(sum / cnt, 1.0);
     }`;
   /* A dither alternates against its neighbours along a line through it; the
-     pixels along a drawn edge match theirs. The residual is a pixel less the mean of its
+     pixels along a drawn edge match theirs. The residual is a pixel minus the mean of its
      neighbourhood, and the detector compares residuals along both
      axes, three pixels each way (grimoire's LINE_REACH). */
   /* Blending in light rather than in stored values. A fine dither of light

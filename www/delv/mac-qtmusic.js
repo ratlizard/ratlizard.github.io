@@ -629,7 +629,7 @@ function qtmaRender(events, tones, lib, opts) {
        or the instrument's "Default Pan Position" when the controller is
        under 1, moved by the key's distance from middle C times "Key
        Scaling"; then the right channel is the gain times that position
-       from 0 to 2 and the left the gain times 2 less it, a straight law
+       from 0 to 2 and the left the gain times 2 minus it, a straight law
        with both at the gain in the middle. */
     const panRaw = st.pan >= 1 ? st.pan * 256 : knob(QTMS_KNOB.defaultPan, 384);
     const pan = Math.max(0, Math.min(2, ((panRaw < 256 || panRaw > 512 ? 384 : panRaw) - 256) / 128 + knob(QTMS_KNOB.panKeyScaling, 0) * (e.pitch - 60) / 8192));

@@ -2143,7 +2143,7 @@ function writeDelverCharacterRecords(records) {
                   bytes 1 to 5 of character i's record. 0x1C for record 0,
                   0x42 for one in the hero's zone, 0xFF for one elsewhere
      0xF00E       no room entered;  0x0401 no To Do line;  0x0404 no macro
-     0xF307       the script heap, one free block: its length less the
+     0xF307       the script heap, one free block: its length minus the
                   header's eight.  0xF308 no frame
      0x8800       the portrait chosen, a copy of the scenario's
      0x0400       Char, then Mons, FXQ and Wind empty, and Grem with every
