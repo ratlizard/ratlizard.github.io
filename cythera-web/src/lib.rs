@@ -8,8 +8,8 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
-use systemless::display::{self, DisplayGamma};
-use systemless::game;
+use systemless::systems::macintosh::display::{self, DisplayGamma};
+use systemless::systems::macintosh::game;
 use systemless::loader::LoadedApp;
 use systemless::runner::{FixtureRunner, FixtureRunnerConfig, VfsFileSnapshot, VfsFileStat};
 
