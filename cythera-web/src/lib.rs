@@ -10,8 +10,8 @@ use std::collections::HashMap;
 
 use systemless::systems::macintosh::display::{self, DisplayGamma};
 use systemless::systems::macintosh::game;
-use systemless::loader::LoadedApp;
-use systemless::runner::{FixtureRunner, FixtureRunnerConfig, VfsFileSnapshot, VfsFileStat};
+use systemless::systems::macintosh::loader::LoadedApp;
+use systemless::systems::macintosh::runner::{FixtureRunner, FixtureRunnerConfig, VfsFileSnapshot, VfsFileStat};
 
 #[link(wasm_import_module = "env")]
 extern "C" {
@@ -164,7 +164,7 @@ pub extern "C" fn cw_load(
         load_address: 0x10000,
         max_instructions: game::MAX_INSTRUCTIONS_PER_FRAME,
         addressing_32_bit: true,
-        ui_theme: systemless::ui_theme::UiThemeId::ClassicSystem7,
+        ui_theme: systemless::systems::macintosh::ui_theme::UiThemeId::ClassicSystem7,
         screen_size: (width > 0 && height > 0)
             .then(|| (width.min(4096) as u16, height.min(4096) as u16)),
         ..FixtureRunnerConfig::default()
@@ -176,7 +176,7 @@ pub extern "C" fn cw_load(
     // is horizontal hash across the whole screen. The 68K path takes the
     // runner's, so it never showed this.
     if width > 0 && height > 0 {
-        systemless::machine_profile::set_reference_screen_size(
+        systemless::systems::macintosh::machine_profile::set_reference_screen_size(
             width.min(4096) as u16,
             height.min(4096) as u16,
         );
@@ -185,7 +185,7 @@ pub extern "C" fn cw_load(
     runner.set_prefer_powerpc_executables(PREFER_POWERPC.with(|p| p.get()));
     runner.set_app_start_time(mac_epoch_secs);
     runner.set_instructions_per_tick(
-        systemless::runner::default_realtime_instructions_per_tick(false),
+        systemless::systems::macintosh::runner::default_realtime_instructions_per_tick(false),
     );
     let app = match game::load_game(&mut runner, &bytes) {
         Ok(app) => app,
@@ -411,10 +411,10 @@ pub extern "C" fn cw_lazy_loads() -> u32 {
 }
 
 /// Interpolate sounds played below the output rate instead of repeating
-/// their samples (`systemless::sound::set_interpolate_upsampling`).
+/// their samples (`systemless::systems::macintosh::sound::set_interpolate_upsampling`).
 #[no_mangle]
 pub extern "C" fn cw_set_interpolate_upsampling(on: u32) {
-    systemless::sound::set_interpolate_upsampling(on != 0);
+    systemless::systems::macintosh::sound::set_interpolate_upsampling(on != 0);
 }
 
 /// Collect the files that changed since the last acknowledged scan and
@@ -832,9 +832,9 @@ pub extern "C" fn cw_tune_install(checksum: u32, ptr: *const u8, len: usize) -> 
     }
     let bytes = unsafe { std::slice::from_raw_parts(ptr, len) }.to_vec();
     with_state(|s| match s.runner.install_substitute_tune(checksum, bytes) {
-        systemless::runner::SubstituteTune::Midi => 1,
-        systemless::runner::SubstituteTune::Recording => 2,
-        systemless::runner::SubstituteTune::Unusable => 0,
+        systemless::systems::macintosh::runner::SubstituteTune::Midi => 1,
+        systemless::systems::macintosh::runner::SubstituteTune::Recording => 2,
+        systemless::systems::macintosh::runner::SubstituteTune::Unusable => 0,
     })
     .unwrap_or(0)
 }
@@ -922,7 +922,7 @@ pub extern "C" fn cw_menus() -> *const u8 {
         // the guest's record up to date only at its next DrawMenuBar.
         let on = s.runner.dispatcher().help_balloons_enabled();
         for menu in &mut snapshot.menus {
-            if menu.id == systemless::menu_model::HELP_MENU_ID {
+            if menu.id == systemless::systems::macintosh::menu_model::HELP_MENU_ID {
                 if let Some(item) = menu.items.first_mut() {
                     item.text = if on { "Hide Balloons" } else { "Show Balloons" }.into();
                 }
@@ -980,7 +980,7 @@ pub extern "C" fn cw_menu_select(menu_id: i32, item: i32) -> i32 {
     with_state(|s| {
         // The Help menu's Show Balloons is the system's, as on a Mac: it
         // turns the balloons on or off and never reaches the game.
-        if menu_id as i16 == systemless::menu_model::HELP_MENU_ID && item == 1 {
+        if menu_id as i16 == systemless::systems::macintosh::menu_model::HELP_MENU_ID && item == 1 {
             let on = s.runner.dispatcher().help_balloons_enabled();
             s.runner.dispatcher_mut().set_help_balloons_enabled(!on);
             return 1;
