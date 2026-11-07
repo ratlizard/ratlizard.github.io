@@ -62,12 +62,11 @@ target=${CARGO_TARGET_DIR:-$HOME/e-z-g-cythera/ratlizard.github.io/target}
 CPU=${CPU:-ppc}
 set --
 if [ "$CPU" = 68k ] && [ "${JIT:-1}" = 1 ]; then
-  # The 68K program with the fork's JIT. The fork's lock file names m68k
-  # 0.14.4, and no published release, 0.14.6 included, has the fix for the RTS
-  # fault that m68k-patched/ was made for (the trace cache resumes a region
-  # that ends on a guarded return at the word after the RTS). A long run on
-  # this build can fault, so use JIT=0, or build the fork against
-  # m68k-patched/. This build's cache goes in a separate target folder.
+  # The 68K program with the fork's JIT. cythera-web's lock file names m68k
+  # 0.14.7, the first release with the fix for the RTS fault (the trace cache
+  # resumed a region that ends on a guarded return at the word after the RTS).
+  # A build locked to an older m68k can fault on a long run, and JIT=0 avoids
+  # it. This build's cache goes in a separate target folder.
   set -- --features jit
   target="$target/board-68k"
 fi
