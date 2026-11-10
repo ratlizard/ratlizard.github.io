@@ -9,6 +9,6 @@ fn main() {
         std::process::exit(2);
     }
     let sit = std::fs::read(&args[1]).expect("read the archive");
-    let pack = systemless::game::pack_stuffit_for_web(&sit).expect("pack the archive");
+    let pack = systemless::systems::macintosh::game::pack_stuffit_for_web(&sit).expect("pack the archive");
     std::fs::write(&args[2], pack).expect("write the pack");
 }

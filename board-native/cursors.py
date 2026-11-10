@@ -2,8 +2,9 @@
 chef's dial (Rings.java): python3 cursors.py <Cythera.rsrc> <out folder> <id>...
 
 A crsr resource has a PixMap, its pixels and its color table at offsets from
-its start, and a one-bit mask (Inside Macintosh: Imaging With QuickDraw,
-'crsr'). A pixel is drawn where the mask is set; where it is clear the
+its start, and a one-bit mask at byte 52, after the 32 bytes of the
+one-bit image at byte 20 (Inside Macintosh: Imaging With QuickDraw, 'crsr';
+grimoire's decodeCrsr reads the same offsets). A pixel is drawn where the mask is set; where it is clear the
 cursor inverts the screen, which a picture of it cannot show, so those
 pixels are left clear.
 """
@@ -34,7 +35,7 @@ def crsr_resources(path):
 
 def decode(c):
     pixmap, pixels = struct.unpack('>II', c[2:10])
-    mask = c[0x2C:0x4C]
+    mask = c[0x34:0x54]
     row_bytes = struct.unpack('>H', c[pixmap + 4:pixmap + 6])[0] & 0x3FFF
     depth = struct.unpack('>H', c[pixmap + 32:pixmap + 34])[0]
     table = struct.unpack('>I', c[pixmap + 42:pixmap + 46])[0]
