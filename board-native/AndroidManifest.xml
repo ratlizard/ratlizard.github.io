@@ -7,7 +7,7 @@
     <!-- Remote.java, in a test build only. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="Deerlizard"
+        android:label="Cythera (Project Deerlizard)"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:extractNativeLibs="true"
