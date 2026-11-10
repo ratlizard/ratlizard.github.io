@@ -28,10 +28,14 @@ import android.view.View;
  * the top as PieceStick.COMMANDS has them, each drawn as one of the
  * program's cursors (CURSORS; cursors.py writes them at build time), the
  * one the dial reads on a lit square. The slice it is pushed into flashes
- * when the command is carried out. The program shows one targeting cursor
- * for every command (TDroppableWindow::CursorRoutine, the workbench's
- * doc/functions), so these are chosen from its other cursors. Without the
- * pictures, the names are written instead.
+ * when the command is carried out. A command armed from the keyboard shows
+ * one targeting cursor, 136, for every verb (TDroppableWindow::CursorRoutine,
+ * the workbench's doc/functions). These are the cursors the program sets when
+ * the command runs from a click or the command menu
+ * (TDroppableWindow::MouseRoutine), 128 plus ChangeCursor's number: 170 the
+ * plain arrow (42), 141 Look (13), 160 Talk (32), 162 Attack (34), 165 Use
+ * (37). Take sets none, so it has 140 (12), the cursor of an item being
+ * dragged. Without the pictures, the names are written instead.
  *
  * Nothing is drawn for a piece that is not down. The view takes no touches;
  * MainActivity's view below it does.
@@ -40,7 +44,7 @@ final class Rings extends View {
     static final float RADIUS = 230, WIDTH = 40, INNER = 40;
     static final long FLASH = 450;
     /** The program's cursor ('crsr') for each of PieceStick.COMMANDS. build.sh reads this line. */
-    static final int[] CURSORS = {170, 141, 160, 136, 169, 139};
+    static final int[] CURSORS = {170, 141, 160, 162, 165, 140};
     /** Display pixels a cursor's 16 is drawn at. */
     static final int ICON = 64;
     final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG), held = new Paint(Paint.ANTI_ALIAS_FLAG),
