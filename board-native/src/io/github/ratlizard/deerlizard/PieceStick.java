@@ -77,7 +77,7 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     /** A piece's base, in display pixels from its centre, when the detector's box gives nothing sensible. */
     static final float BASE = 110;
     /** The push before a piece points, in display pixels, whatever its base: at least, and at most. */
-    static final float PUSH_MIN = 60, PUSH_MAX = 170;
+    static final float PUSH_MIN = 90, PUSH_MAX = 170;
     /** Display pixels back from enter at which a piece stops pointing. */
     static final float RETURN = 24;
     /** Degrees past an octant's edge before the direction changes. */
@@ -93,6 +93,17 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     static final long RECENT = 400;
     /** Ms a contact must have been a piece before it marks one. */
     static final long REAL = 80;
+    /**
+     * Degrees a piece turns between two events that count as turning, and ms
+     * after the last such turn in which a push is not taken. A piece's
+     * detected centre moves as it is turned, since no piece is round, and
+     * the chef turned in place pressed a command now and then (the
+     * maintainer, 12 November 2026).
+     */
+    static final double TURNING = 1.5;
+    static final long SETTLE = 350;
+    /** Ms after the chef's last turn before the dial is set back to the middle of its command. */
+    static final long RECENTRE = 400;
 
     /** The Mac key code and character of each octant's keypad key, clockwise from up. */
     static final int[][] KEYS = {
@@ -109,14 +120,16 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
         float cx, cy, x, y;          // its centre, and where it is now
         float enter, leave;          // display pixels from the centre to point, and to stop
         double facing, turned;       // its last orientation, and the turn counted
+        long turnedAt;               // when it last turned by more than TURNING
         int octant = -1;             // the direction it points, or -1
+        boolean blocked;             // pushed while the other piece pointed: does nothing until brought back
 
         boolean down() { return contact >= 0; }
 
         /** Set down at C: its base is half the larger side of the detector's box, if that is sensible. */
         void setDown(BoardContactEvent c) {
             contact = c.contactId; cx = x = c.positionX; cy = y = c.positionY;
-            facing = c.orientation; turned = 0; octant = -1;
+            facing = c.orientation; turned = 0; octant = -1; turnedAt = 0; blocked = false;
             float box = Math.max(c.boundingBoxExtentsX, c.boundingBoxExtentsY);
             float base = box > 160 ? box / 2 : box;   // the box's whole side or half of it; which is not documented
             if (base < 40 || base > 200) base = BASE;
@@ -133,7 +146,11 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
             double r = Math.hypot(dx, dy);
             double step = turn(facing, c.orientation);
             facing = c.orientation;
-            if (r < (octant < 0 ? enter : leave)) {
+            long now = SystemClock.uptimeMillis();
+            if (Math.abs(step) > TURNING) turnedAt = now;
+            // While it is being turned it does not start to point.
+            boolean turning = octant < 0 && now - turnedAt < SETTLE;
+            if (turning || r < (octant < 0 ? enter : leave)) {
                 // A turn counts only at the centre: pushing a piece out to
                 // the ring turns it a little too.
                 if (r < TURN_ZONE) turned += step;
@@ -271,6 +288,11 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
         if (!mill.down()) { if (!gone(c)) mill.setDown(c); return; }
         if (gone(c)) { release(); mill.contact = -1; return; }
         int o = mill.moved(c);
+        // One piece at a time: pushed while the chef points, the mill does
+        // nothing until it is brought back inside its ring.
+        if (o < 0) mill.blocked = false;
+        else if (chef.octant >= 0 && !chef.blocked) mill.blocked = true;
+        if (mill.blocked) o = -1;
         if (Math.abs(mill.turned) >= TURN) {
             mill.turned -= Math.signum(mill.turned) * TURN;
             passedAt = SystemClock.uptimeMillis();
@@ -295,12 +317,18 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
     synchronized void chefMoved(BoardContactEvent c) {
         if (!chef.down()) {
             if (gone(c)) return;
-            chef.setDown(c); command = 0;
+            // Set down again, it reads the command it read when lifted, at
+            // the middle of that command's step.
+            chef.setDown(c); chef.turned = -command * STEP;
             return;
         }
-        if (gone(c)) { chef.contact = -1; command = 0; Events.note("[piece] chef lifted: plain clicks"); return; }
+        if (gone(c)) { chef.contact = -1; Events.note("[piece] chef lifted: plain clicks, " + COMMANDS[command] + " kept"); return; }
         int was = chef.octant;
         int o = chef.moved(c);
+        // One piece at a time: pushed while the mill walks, the chef does
+        // nothing until it is brought back inside its ring.
+        if (o < 0) chef.blocked = false;
+        else if (held >= 0 || (mill.octant >= 0 && !mill.blocked)) chef.blocked = true;
         // The dial: clockwise is the orientation falling, and only the turn
         // made at the centre counts, so pushing does not change the command.
         double cw = -chef.turned;
@@ -310,7 +338,11 @@ final class PieceStick implements RawDataGlyphDetector.ContactEventWriter {
             command = pick;
             Events.note("[piece] chef turned: " + COMMANDS[pick]);
         }
-        if (o < 0 || o == was) return;
+        // Once it stops turning, the dial goes back to the middle of its
+        // command, so that a small turn after that does not change it.
+        if (chef.turnedAt != 0 && SystemClock.uptimeMillis() - chef.turnedAt > RECENTRE)
+            chef.turned = -(cw - turn(command * STEP, cw));
+        if (chef.blocked || o < 0 || o == was) return;
         final int[] letter = LETTERS[command], key = KEYS[o];
         if (letter == null) return;
         actedAt = SystemClock.uptimeMillis();
